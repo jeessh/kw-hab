@@ -43,5 +43,15 @@ def validate_icon_selection(icons: list[str]) -> list[str]:
 
 
 def icons_to_password(icons: list[str]) -> str:
-    """The default password is the icon slugs joined: 'tree_cat_apple'."""
+    """The icon portion of the key, slugs joined: 'tree_cat_apple'."""
     return "_".join(icons)
+
+
+def credential(username: str, icons: list[str]) -> str:
+    """A member's sign-in key = their name (username) PLUS the ordered icons.
+
+    Because the name is part of the key, identical icons under a different name
+    are a different credential — so a collision requires BOTH the full name and
+    the icon selection to match (uniqueness is on username + icons).
+    """
+    return f"{username}::{icons_to_password(icons)}"

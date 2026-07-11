@@ -9,11 +9,14 @@ from app.db.session import Base
 
 
 class User(Base):
-    """A community member. The 3-icon set is the globally-unique identifier;
-    usernames (firstname_lastname) are NOT unique — people can share a name."""
+    """A community member. The sign-in key is the full name PLUS the ordered
+    3-icon set, so uniqueness is on (username, icons): people can share a name,
+    and even the same icons, as long as the two together differ."""
 
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("icons", name="uq_users_icons"),)
+    __table_args__ = (
+        UniqueConstraint("username", "icons", name="uq_users_username_icons"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

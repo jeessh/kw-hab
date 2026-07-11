@@ -8,7 +8,7 @@ from app.api.deps import (
     set_auth_cookie,
 )
 from app.core.icons import (
-    icons_to_password,
+    credential,
     random_icon_set,
     validate_icon_selection,
 )
@@ -59,7 +59,7 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
     else:
         icons = _allocate_unique_icons(db)
 
-    password = body.custom_password or icons_to_password(icons)
+    password = body.custom_password or credential(username, icons)
 
     user = User(
         first_name=body.first_name.strip(),
@@ -73,15 +73,15 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
     )
     db.add(user)
     try:
-        # `icons` is globally unique (uq_users_icons) — and ordered, so
-        # tree_cat_apple and cat_apple_tree are distinct keys.
+        # Unique on (username, icons): a clash needs the same name AND the same
+        # ordered icon selection.
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "That icon combination is already taken — pick a different set of "
-            "icons.",
+            "That name and icon combination is already taken — pick a different "
+            "set of icons.",
         )
     db.refresh(user)
 
@@ -120,12 +120,14 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
 
     username = _make_username(body.first_name, body.last_name)
-    password = icons_to_password(icons)
+    password = credential(username, icons)
 
-    # 1) Existing record? Match name + icon key. Usernames aren't unique, so
-    #    verify the icon-derived password against each same-named account.
+    # 1) Existing record? The key is name + icons, so verify the credential
+    #    against each same-named account (usernames alone aren't unique).
     for user in db.query(User).filter(User.username == username).all():
-        if verify_password(password, user.password_hash):
+        if user.auth_type == "icon" and verify_password(
+            password, user.password_hash
+        ):
             set_auth_cookie(response, create_access_token(user.id, "user"))
             return {
                 "mode": "login",
@@ -134,24 +136,8 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
                 "icons": user.icons,
             }
 
-    # 2) No match. If those icons already belong to someone, we can't create
-    #    the account (icons are globally unique).
-    taken = db.query(User).filter(User.icons == icons).first()
-    if taken:
-        # Icon-only is the norm; a password account owning these icons (only
-        # creatable via the direct API, not this UI) can't sign in with icons.
-        if taken.auth_type == "password" and taken.username == username:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "This account signs in with a password, not icons.",
-            )
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "That icon combination is already taken — pick a different set of "
-            "icons.",
-        )
-
-    # 3) Fresh name + icons → create the account.
+    # 2) Fresh (name + icons) → create the account. Different people may share
+    #    the same icons as long as their names differ; a clash needs both.
     user = User(
         first_name=body.first_name.strip(),
         last_name=body.last_name.strip(),
@@ -169,8 +155,8 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
         db.rollback()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "That icon combination is already taken — pick a different set of "
-            "icons.",
+            "That name and icon combination is already taken — pick a different "
+            "set of icons.",
         )
     db.refresh(user)
     set_auth_cookie(response, create_access_token(user.id, "user"))

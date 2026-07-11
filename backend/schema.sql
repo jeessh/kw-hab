@@ -19,7 +19,8 @@ create table if not exists users (
     voice_commands_enabled boolean not null default false,  -- voice navigation
     eye_tracking_enabled   boolean not null default false,  -- gaze dwell navigation
     created_at    timestamptz not null default now(),
-    constraint uq_users_icons unique (icons)
+    -- key is name + icons: a clash needs BOTH to match
+    constraint uq_users_username_icons unique (username, icons)
 );
 create index if not exists ix_users_username on users (username);
 
