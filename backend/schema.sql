@@ -17,6 +17,7 @@ create table if not exists users (
     interest_categories text[] not null default '{}',
     tts_enabled            boolean not null default false,  -- read events aloud
     voice_commands_enabled boolean not null default false,  -- voice navigation
+    eye_tracking_enabled   boolean not null default false,  -- gaze dwell navigation
     created_at    timestamptz not null default now(),
     constraint uq_users_icons unique (icons)
 );

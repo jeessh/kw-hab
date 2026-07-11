@@ -30,6 +30,9 @@ import { countdown } from "@/lib/time";
 import { useHold } from "@/lib/useHold";
 import { useTextToSpeech } from "@/lib/useTextToSpeech";
 import { useSpeechCommands } from "@/lib/useSpeechCommands";
+import { useEyeTracking } from "@/lib/useEyeTracking";
+import { GazeCursor } from "@/components/GazeCursor";
+import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { PersonIcon } from "@/components/PersonIcon";
 import { Modal } from "@/components/Modal";
@@ -98,6 +101,7 @@ export function EventsView() {
   // Voice-accessibility prefs (hydrated from /users/me, persisted on toggle).
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [eyeEnabled, setEyeEnabled] = useState(false);
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
@@ -140,6 +144,7 @@ export function EventsView() {
         setMe(meRes);
         setTtsEnabled(meRes.tts_enabled);
         setVoiceEnabled(meRes.voice_commands_enabled);
+        setEyeEnabled(meRes.eye_tracking_enabled);
         setEvents(evRes);
         setStatus(evRes.length ? "ready" : "empty");
       } catch (e) {
@@ -344,6 +349,8 @@ export function EventsView() {
     if (patch.tts_enabled !== undefined) setTtsEnabled(patch.tts_enabled);
     if (patch.voice_commands_enabled !== undefined)
       setVoiceEnabled(patch.voice_commands_enabled);
+    if (patch.eye_tracking_enabled !== undefined)
+      setEyeEnabled(patch.eye_tracking_enabled);
     setMe((m) => (m ? { ...m, ...patch } : m));
     try {
       await updateMe(patch);
@@ -361,10 +368,10 @@ export function EventsView() {
     router.replace("/signup");
   }, [router]);
 
-  // ---- voice commands (continuous while enabled) ----
-  const { supported: voiceSupported, listening } = useSpeechCommands(
-    voiceEnabled,
-    {
+  // The four card actions, shared by voice + eye-tracking so every input path
+  // behaves identically. (Center gaze / silence = no-op.)
+  const actionHandlers = useMemo(
+    () => ({
       onNext: () => {
         if (view !== "settings") next();
       },
@@ -372,10 +379,32 @@ export function EventsView() {
       onAdd: () => {
         if (view !== "settings") void dragToAttend();
       },
-      onSettings: () => (view === "settings" ? closeSettings() : openSettings()),
-    },
+      onSettings: () =>
+        view === "settings" ? closeSettings() : openSettings(),
+    }),
+    [view, next, prev, dragToAttend, closeSettings, openSettings],
+  );
+
+  // ---- voice commands (continuous while enabled) ----
+  const { supported: voiceSupported, listening } = useSpeechCommands(
+    voiceEnabled,
+    actionHandlers,
     // Mute the mic while the TTS bot is reading, so it doesn't hear itself.
     speaking,
+  );
+
+  // ---- eye tracking (gaze-dwell while enabled) ----
+  const {
+    supported: eyeSupported,
+    calibrating,
+    gaze,
+    recordCalibrationPoint,
+    finishCalibration,
+  } = useEyeTracking(
+    eyeEnabled,
+    actionHandlers,
+    // Freeze dwell while a panel is open so looking around doesn't fire actions.
+    view === "settings" || a11yOpen || savedOpen,
   );
 
   // ---- text-to-speech: read the current event when it changes ----
@@ -456,6 +485,16 @@ export function EventsView() {
       {/* ambient ground */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff_0%,#EEEBF5_55%,#E6E1F2_100%)]" />
 
+      {/* eye tracking: gaze cursor + one-time calibration overlay */}
+      {eyeEnabled && eyeSupported && <GazeCursor gaze={gaze} />}
+      {eyeEnabled && eyeSupported && calibrating && (
+        <CalibrationOverlay
+          onPoint={recordCalibrationPoint}
+          onDone={finishCalibration}
+          onCancel={() => void setPref({ eye_tracking_enabled: false })}
+        />
+      )}
+
       {/* screen-reader announcement */}
       <p className="sr-only" role="status" aria-live="polite">
         {srMessage}
@@ -481,6 +520,9 @@ export function EventsView() {
         voiceSupported={voiceSupported}
         onToggleTts={(v) => void setPref({ tts_enabled: v })}
         onToggleVoice={(v) => void setPref({ voice_commands_enabled: v })}
+        eyeEnabled={eyeEnabled}
+        eyeSupported={eyeSupported}
+        onToggleEye={(v) => void setPref({ eye_tracking_enabled: v })}
         listening={voiceEnabled && listening}
       />
 
@@ -494,6 +536,9 @@ export function EventsView() {
         voiceSupported={voiceSupported}
         onToggleTts={(v) => void setPref({ tts_enabled: v })}
         onToggleVoice={(v) => void setPref({ voice_commands_enabled: v })}
+        eyeEnabled={eyeEnabled}
+        eyeSupported={eyeSupported}
+        onToggleEye={(v) => void setPref({ eye_tracking_enabled: v })}
         onLogout={doLogout}
       />
 
@@ -601,6 +646,28 @@ export function EventsView() {
                 </motion.div>
               </motion.div>
             </div>
+
+            {/* hint: the ↓ arrow key saves the focused card */}
+            {!flying && !confirming && (
+              <motion.div
+                aria-hidden
+                initial={reduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mt-2 flex flex-col items-center gap-0.5 text-ink/70"
+              >
+                <motion.span
+                  className="text-2xl leading-none"
+                  style={{ color: BERRY }}
+                  animate={reduceMotion ? undefined : { y: [0, 5, 0] }}
+                  transition={{ repeat: Infinity, duration: 1.2 }}
+                >
+                  ↓
+                </motion.span>
+                <span className="text-xs font-semibold">
+                  Press ↓ to save
+                </span>
+              </motion.div>
+            )}
           </>
         )}
 
@@ -844,6 +911,9 @@ function AccessibilityMenu({
   voiceSupported,
   onToggleTts,
   onToggleVoice,
+  eyeEnabled,
+  eyeSupported,
+  onToggleEye,
   listening,
 }: {
   open: boolean;
@@ -854,6 +924,9 @@ function AccessibilityMenu({
   voiceSupported: boolean;
   onToggleTts: (v: boolean) => void;
   onToggleVoice: (v: boolean) => void;
+  eyeEnabled: boolean;
+  eyeSupported: boolean;
+  onToggleEye: (v: boolean) => void;
   listening: boolean;
 }) {
   return (
@@ -908,6 +981,14 @@ function AccessibilityMenu({
               disabled={!voiceSupported}
               disabledHint="Not supported here (try Chrome or Edge)."
               onChange={onToggleVoice}
+            />
+            <MenuToggle
+              label="Eye tracking (gaze control)"
+              hint="Look at a screen edge to move, save, or open settings."
+              checked={eyeEnabled}
+              disabled={!eyeSupported}
+              disabledHint="Needs a webcam on Chrome or Edge over https."
+              onChange={onToggleEye}
             />
           </div>
         </div>
@@ -1120,6 +1201,9 @@ function SettingsMorph({
   voiceSupported,
   onToggleTts,
   onToggleVoice,
+  eyeEnabled,
+  eyeSupported,
+  onToggleEye,
   onLogout,
 }: {
   me: Me | null;
@@ -1131,6 +1215,9 @@ function SettingsMorph({
   voiceSupported: boolean;
   onToggleTts: (v: boolean) => void;
   onToggleVoice: (v: boolean) => void;
+  eyeEnabled: boolean;
+  eyeSupported: boolean;
+  onToggleEye: (v: boolean) => void;
   onLogout: () => void;
 }) {
   if (reveal <= 0) return null;
@@ -1181,6 +1268,20 @@ function SettingsMorph({
               disabledHint="Not supported in this browser (try Chrome or Edge)."
               onChange={onToggleVoice}
             />
+            <ToggleRow
+              label="Eye tracking"
+              hint="Look at a screen edge for 2s to move, save, or open settings."
+              checked={eyeEnabled}
+              disabled={!eyeSupported}
+              disabledHint="Needs a webcam on Chrome or Edge over https."
+              onChange={onToggleEye}
+            />
+
+            {eyeEnabled && eyeSupported && (
+              <p className="mt-3 text-sm text-muted">
+                Uses your webcam in-browser only — no video is sent anywhere.
+              </p>
+            )}
 
             {voiceEnabled && voiceSupported && (
               <p className="mt-3 text-sm text-muted">

@@ -17,6 +17,7 @@ class UserOut(BaseModel):
     interest_categories: list[str]
     tts_enabled: bool
     voice_commands_enabled: bool
+    eye_tracking_enabled: bool
     created_at: datetime
 
 
@@ -35,3 +36,4 @@ class UserPrefsUpdate(BaseModel):
     interest_categories: list[str] | None = None
     tts_enabled: bool | None = None
     voice_commands_enabled: bool | None = None
+    eye_tracking_enabled: bool | None = None

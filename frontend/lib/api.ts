@@ -70,6 +70,7 @@ export type Me = {
   interest_categories: string[];
   tts_enabled: boolean;
   voice_commands_enabled: boolean;
+  eye_tracking_enabled: boolean;
 };
 
 /** Fields a member can update on themselves via PATCH /users/me. */
@@ -80,6 +81,7 @@ export type MePrefs = Partial<
     | "interest_categories"
     | "tts_enabled"
     | "voice_commands_enabled"
+    | "eye_tracking_enabled"
   >
 >;
 
