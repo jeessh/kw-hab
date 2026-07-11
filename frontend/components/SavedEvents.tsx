@@ -42,27 +42,9 @@ type Props = {
   me: Me | null;
   reveal: number;
   onClose: () => void;
-  ttsEnabled: boolean;
-  voiceEnabled: boolean;
-  ttsSupported: boolean;
-  voiceSupported: boolean;
-  onToggleTts: (v: boolean) => void;
-  onToggleVoice: (v: boolean) => void;
-  onLogout: () => void;
 };
 
-export function SavedEvents({
-  me,
-  reveal,
-  onClose,
-  ttsEnabled,
-  voiceEnabled,
-  ttsSupported,
-  voiceSupported,
-  onToggleTts,
-  onToggleVoice,
-  onLogout,
-}: Props) {
+export function SavedEvents({ me, reveal, onClose }: Props) {
   const open = reveal > 0;
   const [events, setEvents] = useState<Event[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -150,16 +132,6 @@ export function SavedEvents({
               ))}
             </Section>
           )}
-
-          <PreferencesCard
-            ttsEnabled={ttsEnabled}
-            voiceEnabled={voiceEnabled}
-            ttsSupported={ttsSupported}
-            voiceSupported={voiceSupported}
-            onToggleTts={onToggleTts}
-            onToggleVoice={onToggleVoice}
-            onLogout={onLogout}
-          />
         </div>
       </div>
     </div>
@@ -281,97 +253,6 @@ function EmptyAll() {
         Events you attend show up here — browse programs and hold a card to
         attend.
       </p>
-    </div>
-  );
-}
-
-/* ---------------- preferences ---------------- */
-
-function PreferencesCard({
-  ttsEnabled,
-  voiceEnabled,
-  ttsSupported,
-  voiceSupported,
-  onToggleTts,
-  onToggleVoice,
-  onLogout,
-}: Omit<Props, "me" | "reveal" | "onClose">) {
-  return (
-    <section className="mt-12 rounded-3xl bg-white p-6 shadow-card">
-      <h2 className="font-display text-xl font-extrabold text-ink">
-        Preferences
-      </h2>
-      <ToggleRow
-        label="Read events aloud"
-        hint="Speaks each event as you browse."
-        checked={ttsEnabled}
-        disabled={!ttsSupported}
-        disabledHint="Not supported in this browser."
-        onChange={onToggleTts}
-      />
-      <ToggleRow
-        label="Voice commands"
-        hint={'Say "next", "back", "add", or "settings".'}
-        checked={voiceEnabled}
-        disabled={!voiceSupported}
-        disabledHint="Not supported in this browser (try Chrome or Edge)."
-        onChange={onToggleVoice}
-      />
-      {voiceEnabled && voiceSupported && (
-        <p className="mt-3 text-sm text-muted">
-          Listening uses your microphone; audio may be sent to your browser’s
-          speech service for recognition.
-        </p>
-      )}
-      <button
-        onClick={onLogout}
-        className="mt-6 w-full rounded-xl border-2 border-edge px-5 py-3 font-semibold text-pop transition-colors hover:border-pop"
-      >
-        Log out
-      </button>
-    </section>
-  );
-}
-
-function ToggleRow({
-  label,
-  hint,
-  checked,
-  disabled,
-  disabledHint,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  checked: boolean;
-  disabled?: boolean;
-  disabledHint?: string;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="mt-4 flex items-start justify-between gap-4">
-      <div>
-        <p className="font-display text-lg font-semibold text-ink">{label}</p>
-        <p className="text-sm text-muted">
-          {disabled ? disabledHint ?? hint : hint}
-        </p>
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-1 h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
-          checked ? "bg-accent" : "bg-edge"
-        }`}
-      >
-        <span
-          className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
-            checked ? "left-6" : "left-1"
-          }`}
-        />
-      </button>
     </div>
   );
 }

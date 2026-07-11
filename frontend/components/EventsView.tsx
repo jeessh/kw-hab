@@ -34,7 +34,6 @@ import { useEyeTracking } from "@/lib/useEyeTracking";
 import { GazeCursor } from "@/components/GazeCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
-import { PersonIcon } from "@/components/PersonIcon";
 import { Modal } from "@/components/Modal";
 import { SavedEvents } from "@/components/SavedEvents";
 
@@ -515,6 +514,28 @@ export function EventsView() {
         </div>
       )}
 
+      {/* log out — top right, left of the accessibility menu */}
+      <button
+        onClick={doLogout}
+        aria-label="Log out"
+        className="absolute right-[4.5rem] top-4 z-50 grid h-12 w-12 place-items-center rounded-full bg-white text-pop shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
+
       {/* accessibility settings — top right */}
       <AccessibilityMenu
         open={a11yOpen}
@@ -531,21 +552,8 @@ export function EventsView() {
         listening={voiceEnabled && listening}
       />
 
-      <SettingsMorph
-        me={me}
-        reveal={settingsReveal}
-        onClose={closeSettings}
-        ttsEnabled={ttsEnabled}
-        voiceEnabled={voiceEnabled}
-        ttsSupported={ttsSupported}
-        voiceSupported={voiceSupported}
-        onToggleTts={(v) => void setPref({ tts_enabled: v })}
-        onToggleVoice={(v) => void setPref({ voice_commands_enabled: v })}
-        eyeEnabled={eyeEnabled}
-        eyeSupported={eyeSupported}
-        onToggleEye={(v) => void setPref({ eye_tracking_enabled: v })}
-        onLogout={doLogout}
-      />
+      {/* large Saved Events panel — opens via the settings gesture */}
+      <SavedEvents me={me} reveal={settingsReveal} onClose={closeSettings} />
 
       {/* ---------------- EVENTS ---------------- */}
       <div
@@ -1195,164 +1203,6 @@ function SideNav({
 }
 
 /* ---------------- settings morph ---------------- */
-
-function SettingsMorph({
-  me,
-  reveal,
-  onClose,
-  ttsEnabled,
-  voiceEnabled,
-  ttsSupported,
-  voiceSupported,
-  onToggleTts,
-  onToggleVoice,
-  eyeEnabled,
-  eyeSupported,
-  onToggleEye,
-  onLogout,
-}: {
-  me: Me | null;
-  reveal: number;
-  onClose: () => void;
-  ttsEnabled: boolean;
-  voiceEnabled: boolean;
-  ttsSupported: boolean;
-  voiceSupported: boolean;
-  onToggleTts: (v: boolean) => void;
-  onToggleVoice: (v: boolean) => void;
-  eyeEnabled: boolean;
-  eyeSupported: boolean;
-  onToggleEye: (v: boolean) => void;
-  onLogout: () => void;
-}) {
-  if (reveal <= 0) return null;
-  return (
-    <div
-      className="absolute inset-0 z-10 grid place-items-center overflow-y-auto py-10"
-      style={{ opacity: reveal }}
-      onClick={onClose}
-    >
-      <div className="flex flex-col items-center gap-4">
-        <div
-          className="grid place-items-center rounded-full bg-white shadow-lift"
-          style={{ height: 96 + reveal * 96, width: 96 + reveal * 96 }}
-        >
-          <PersonIcon
-            className="text-accent"
-            style={{ height: 44 + reveal * 40, width: 44 + reveal * 40 }}
-          />
-        </div>
-        {me && (
-          <p className="font-display text-3xl font-extrabold text-ink">
-            {me.first_name} {me.last_name}
-          </p>
-        )}
-
-        {reveal > 0.95 && (
-          <div
-            className="mt-2 w-[min(440px,86vw)] rounded-3xl bg-white p-6 shadow-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="font-display text-xl font-extrabold text-ink">
-              Voice &amp; accessibility
-            </h2>
-
-            <ToggleRow
-              label="Read events aloud"
-              hint="Speaks each event as you browse."
-              checked={ttsEnabled}
-              disabled={!ttsSupported}
-              disabledHint="Not supported in this browser."
-              onChange={onToggleTts}
-            />
-            <ToggleRow
-              label="Voice commands"
-              hint={'Say "next", "back", "add", or "settings".'}
-              checked={voiceEnabled}
-              disabled={!voiceSupported}
-              disabledHint="Not supported in this browser (try Chrome or Edge)."
-              onChange={onToggleVoice}
-            />
-            <ToggleRow
-              label="Eye tracking"
-              hint="Look at a screen edge for 2s to move, save, or open settings."
-              checked={eyeEnabled}
-              disabled={!eyeSupported}
-              disabledHint="Needs a webcam on Chrome or Edge over https."
-              onChange={onToggleEye}
-            />
-
-            {eyeEnabled && eyeSupported && (
-              <p className="mt-3 text-sm text-muted">
-                Uses your webcam in-browser only — no video is sent anywhere.
-              </p>
-            )}
-
-            {voiceEnabled && voiceSupported && (
-              <p className="mt-3 text-sm text-muted">
-                Listening uses your microphone; audio may be sent to your
-                browser’s speech service for recognition.
-              </p>
-            )}
-
-            <button
-              onClick={onLogout}
-              className="mt-6 w-full rounded-xl border-2 border-edge px-5 py-3 font-semibold text-pop transition-colors hover:border-pop"
-            >
-              Log out
-            </button>
-            <p className="mt-4 text-center text-sm text-muted">
-              Tap outside to go back
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  hint,
-  checked,
-  disabled,
-  disabledHint,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  checked: boolean;
-  disabled?: boolean;
-  disabledHint?: string;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="mt-4 flex items-start justify-between gap-4">
-      <div>
-        <p className="font-display text-lg font-semibold text-ink">{label}</p>
-        <p className="text-sm text-muted">
-          {disabled ? disabledHint ?? hint : hint}
-        </p>
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-1 h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
-          checked ? "bg-accent" : "bg-edge"
-        }`}
-      >
-        <span
-          className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
-            checked ? "left-6" : "left-1"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
 
 /* ---------------- icons ---------------- */
 
