@@ -66,4 +66,24 @@ export type Me = {
   last_name: string;
   username: string;
   icons: string[];
+  accessibility_prefs: string[];
+  interest_categories: string[];
+  tts_enabled: boolean;
+  voice_commands_enabled: boolean;
 };
+
+/** Fields a member can update on themselves via PATCH /users/me. */
+export type MePrefs = Partial<
+  Pick<
+    Me,
+    | "accessibility_prefs"
+    | "interest_categories"
+    | "tts_enabled"
+    | "voice_commands_enabled"
+  >
+>;
+
+export const updateMe = (body: MePrefs) =>
+  api<Me>("/users/me", { method: "PATCH", body: JSON.stringify(body) });
+
+export const logout = () => api("/auth/logout", { method: "POST" });

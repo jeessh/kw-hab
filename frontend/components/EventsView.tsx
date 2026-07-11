@@ -10,10 +10,21 @@ import {
   useReducedMotion,
   useTransform,
 } from "framer-motion";
-import { ApiError, api, type Event, type Me } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  logout,
+  updateMe,
+  type Event,
+  type Me,
+  type MePrefs,
+} from "@/lib/api";
 import { countdown } from "@/lib/time";
 import { emojiFor } from "@/lib/icons";
 import { useHold } from "@/lib/useHold";
+import { useTextToSpeech } from "@/lib/useTextToSpeech";
+import { useSpeechCommands } from "@/lib/useSpeechCommands";
+import { eventToSpeech } from "@/lib/eventSpeech";
 import { PersonIcon } from "@/components/PersonIcon";
 
 const DROP_THRESHOLD = 150; // drag-down px to attend
@@ -63,6 +74,10 @@ export function EventsView() {
   const [iconPulse, setIconPulse] = useState(false);
   const [srMessage, setSrMessage] = useState("");
 
+  // Voice-accessibility prefs (hydrated from /users/me, persisted on toggle).
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+
   // Drag-only progress (keeps the existing "drop here" slot for the drag path).
   const [saveReveal, setSaveReveal] = useState(0);
   const [settingsReveal, setSettingsReveal] = useState(0);
@@ -83,6 +98,13 @@ export function EventsView() {
   const holdSave = useHold();
   const holdSettings = useHold();
 
+  const {
+    supported: ttsSupported,
+    speaking,
+    speak,
+    cancel: cancelSpeech,
+  } = useTextToSpeech();
+
   // ---- data ----
   useEffect(() => {
     (async () => {
@@ -92,6 +114,8 @@ export function EventsView() {
           api<Event[]>("/events"),
         ]);
         setMe(meRes);
+        setTtsEnabled(meRes.tts_enabled);
+        setVoiceEnabled(meRes.voice_commands_enabled);
         setEvents(evRes);
         setStatus(evRes.length ? "ready" : "empty");
       } catch (e) {
@@ -106,19 +130,18 @@ export function EventsView() {
 
   const current = events[i];
 
-  const next = useCallback(
-    () => setEvents((ev) => (setI((n) => (n + 1) % Math.max(ev.length, 1)), ev)),
-    [],
-  );
-  const prev = useCallback(
-    () =>
-      setEvents(
-        (ev) => (
-          setI((n) => (n - 1 + ev.length) % Math.max(ev.length, 1)), ev
-        ),
-      ),
-    [],
-  );
+  // +1 = advancing (new card slides in from the right), -1 = going back.
+  const [dir, setDir] = useState(1);
+  const next = useCallback(() => {
+    setDir(1);
+    setEvents((ev) => (setI((n) => (n + 1) % Math.max(ev.length, 1)), ev));
+  }, []);
+  const prev = useCallback(() => {
+    setDir(-1);
+    setEvents(
+      (ev) => (setI((n) => (n - 1 + ev.length) % Math.max(ev.length, 1)), ev),
+    );
+  }, []);
 
   // Which event sits `offset` slots from the focused one. The window does NOT
   // wrap, so the five cards always read left→right in the events' own order
@@ -167,6 +190,31 @@ export function EventsView() {
     void attend(ev);
     window.setTimeout(() => setConfirming(false), 1300);
   }, [events, i, attend]);
+
+  // Voice "attend" → emulate a real drag: ease the card down into the slot
+  // (ramping the drop glow with it), pause, then commit like a manual release.
+  const dragToAttend = useCallback(async () => {
+    const ev = events[i];
+    if (!ev || flying) return;
+    if (reduceMotion) {
+      void saveCurrent();
+      return;
+    }
+    // Drive the slot glow off the card's y-position as it descends.
+    const unsub = y.on("change", (v) =>
+      setSaveReveal(clamp01(v / DROP_THRESHOLD)),
+    );
+    await animate(y, DROP_THRESHOLD + 8, {
+      type: "spring",
+      stiffness: 220,
+      damping: 26,
+    });
+    await new Promise((r) => window.setTimeout(r, 180)); // "release" beat
+    unsub();
+    setSaveReveal(0);
+    await animate(y, 0, { duration: 0.28, ease: "easeOut" });
+    void saveCurrent();
+  }, [events, i, flying, reduceMotion, y, saveCurrent]);
 
   // Hold complete → pop the card, shrink it into the bottom-center user icon,
   // register attendance, then slide the next event in from the right.
@@ -273,6 +321,57 @@ export function EventsView() {
     holdSettings.cancel(() => setSettingsReveal(0));
   }, [holdSettings]);
 
+  // ---- preferences (persist to profile) ----
+  const setPref = useCallback(async (patch: MePrefs) => {
+    if (patch.tts_enabled !== undefined) setTtsEnabled(patch.tts_enabled);
+    if (patch.voice_commands_enabled !== undefined)
+      setVoiceEnabled(patch.voice_commands_enabled);
+    setMe((m) => (m ? { ...m, ...patch } : m));
+    try {
+      await updateMe(patch);
+    } catch {
+      /* keep optimistic state for the demo even if the write fails */
+    }
+  }, []);
+
+  const doLogout = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      /* clear the session client-side regardless */
+    }
+    router.replace("/signup");
+  }, [router]);
+
+  // ---- voice commands (continuous while enabled) ----
+  const { supported: voiceSupported, listening } = useSpeechCommands(
+    voiceEnabled,
+    {
+      // next/add only act on the visible card — ignore them while Settings is
+      // open (back/settings stay live so voice can close the panel).
+      onNext: () => {
+        if (view !== "settings") next();
+      },
+      onBack: () => (view === "settings" ? closeSettings() : prev()),
+      onAdd: () => {
+        if (view !== "settings") void dragToAttend();
+      },
+      onSettings: () => (view === "settings" ? closeSettings() : openSettings()),
+    },
+    // Mute the mic while the TTS bot is reading, so it doesn't hear itself.
+    speaking,
+  );
+
+  // ---- text-to-speech: read the current event when it changes ----
+  useEffect(() => {
+    if (ttsEnabled && current && view === "events") {
+      speak(eventToSpeech(current));
+    } else {
+      cancelSpeech();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [i, current?.id, ttsEnabled, view]);
+
   // ---- keyboard ----
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
@@ -346,8 +445,29 @@ export function EventsView() {
         {srMessage}
       </p>
 
+      {/* voice listening indicator */}
+      {voiceEnabled && listening && (
+        <div
+          className="pointer-events-none absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-full bg-ink/85 px-4 py-1.5 text-sm font-medium text-white"
+          role="status"
+        >
+          🎙 Listening…
+        </div>
+      )}
+
       {/* ---------------- SETTINGS MORPH ---------------- */}
-      <SettingsMorph me={me} reveal={settingsReveal} onClose={closeSettings} />
+      <SettingsMorph
+        me={me}
+        reveal={settingsReveal}
+        onClose={closeSettings}
+        ttsEnabled={ttsEnabled}
+        voiceEnabled={voiceEnabled}
+        ttsSupported={ttsSupported}
+        voiceSupported={voiceSupported}
+        onToggleTts={(v) => void setPref({ tts_enabled: v })}
+        onToggleVoice={(v) => void setPref({ voice_commands_enabled: v })}
+        onLogout={doLogout}
+      />
 
       {/* ---------------- EVENTS ---------------- */}
       <div
@@ -400,8 +520,21 @@ export function EventsView() {
                 }}
                 className="relative aspect-[3/2] w-full max-w-[720px]"
               >
+                {/* Slide the focused card in from the travel direction on
+                    next/back. Enter-only (keyed by id) so it never fights the
+                    inner drag x/y or the fly-to-icon transforms. */}
                 <motion.div
                   key={current.id}
+                  initial={
+                    flying || reduceMotion
+                      ? false
+                      : { x: dir > 0 ? 300 : -300, opacity: 0 }
+                  }
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 34 }}
+                  className="absolute inset-0"
+                >
+                <motion.div
                   drag={!flying}
                   dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                   dragElastic={0.65}
@@ -438,6 +571,7 @@ export function EventsView() {
                   <AnimatePresence>
                     {confirming && <ConfirmSweep />}
                   </AnimatePresence>
+                </motion.div>
                 </motion.div>
               </motion.div>
             </div>
@@ -796,15 +930,29 @@ function SettingsMorph({
   me,
   reveal,
   onClose,
+  ttsEnabled,
+  voiceEnabled,
+  ttsSupported,
+  voiceSupported,
+  onToggleTts,
+  onToggleVoice,
+  onLogout,
 }: {
   me: Me | null;
   reveal: number;
   onClose: () => void;
+  ttsEnabled: boolean;
+  voiceEnabled: boolean;
+  ttsSupported: boolean;
+  voiceSupported: boolean;
+  onToggleTts: (v: boolean) => void;
+  onToggleVoice: (v: boolean) => void;
+  onLogout: () => void;
 }) {
   if (reveal <= 0) return null;
   return (
     <div
-      className="absolute inset-0 z-10 grid place-items-center"
+      className="absolute inset-0 z-10 grid place-items-center overflow-y-auto py-10"
       style={{ opacity: reveal }}
       onClick={onClose}
     >
@@ -823,12 +971,96 @@ function SettingsMorph({
             {me.first_name} {me.last_name}
           </p>
         )}
+
         {reveal > 0.95 && (
-          <p className="text-lg text-muted">
-            Settings coming soon · press Esc or tap to go back
-          </p>
+          // stopPropagation: the backdrop closes on click, the card must not.
+          <div
+            className="mt-2 w-[min(440px,86vw)] rounded-3xl bg-white p-6 shadow-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-display text-xl font-extrabold text-ink">
+              Voice &amp; accessibility
+            </h2>
+
+            <ToggleRow
+              label="Read events aloud"
+              hint="Speaks each event as you browse."
+              checked={ttsEnabled}
+              disabled={!ttsSupported}
+              disabledHint="Not supported in this browser."
+              onChange={onToggleTts}
+            />
+            <ToggleRow
+              label="Voice commands"
+              hint={'Say "next", "back", "add", or "settings".'}
+              checked={voiceEnabled}
+              disabled={!voiceSupported}
+              disabledHint="Not supported in this browser (try Chrome or Edge)."
+              onChange={onToggleVoice}
+            />
+
+            {voiceEnabled && voiceSupported && (
+              <p className="mt-3 text-sm text-muted">
+                Listening uses your microphone; audio may be sent to your
+                browser’s speech service for recognition.
+              </p>
+            )}
+
+            <button
+              onClick={onLogout}
+              className="mt-6 w-full rounded-xl border-2 border-edge px-5 py-3 font-semibold text-pop transition-colors hover:border-pop"
+            >
+              Log out
+            </button>
+            <p className="mt-4 text-center text-sm text-muted">
+              Tap outside to go back
+            </p>
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  disabled,
+  disabledHint,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  disabled?: boolean;
+  disabledHint?: string;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="mt-4 flex items-start justify-between gap-4">
+      <div>
+        <p className="font-display text-lg font-semibold text-ink">{label}</p>
+        <p className="text-sm text-muted">
+          {disabled ? disabledHint ?? hint : hint}
+        </p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-1 h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
+          checked ? "bg-accent" : "bg-edge"
+        }`}
+      >
+        <span
+          className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
+            checked ? "left-6" : "left-1"
+          }`}
+        />
+      </button>
     </div>
   );
 }

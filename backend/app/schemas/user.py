@@ -15,6 +15,8 @@ class UserOut(BaseModel):
     icons: list[str]
     accessibility_prefs: list[str]
     interest_categories: list[str]
+    tts_enabled: bool
+    voice_commands_enabled: bool
     created_at: datetime
 
 
@@ -23,3 +25,13 @@ class UserUpdate(BaseModel):
 
     first_name: str | None = None
     last_name: str | None = None
+
+
+class UserPrefsUpdate(BaseModel):
+    """Self-service preference update for PATCH /users/me. All fields optional;
+    only those sent (exclude_unset) are applied to the authenticated member."""
+
+    accessibility_prefs: list[str] | None = None
+    interest_categories: list[str] | None = None
+    tts_enabled: bool | None = None
+    voice_commands_enabled: bool | None = None

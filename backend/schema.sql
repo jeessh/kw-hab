@@ -15,6 +15,8 @@ create table if not exists users (
     icons         text[] not null,
     accessibility_prefs text[] not null default '{}',   -- onboarding prefs (sort, not filter)
     interest_categories text[] not null default '{}',
+    tts_enabled            boolean not null default false,  -- read events aloud
+    voice_commands_enabled boolean not null default false,  -- voice navigation
     created_at    timestamptz not null default now(),
     constraint uq_users_icons unique (icons)
 );

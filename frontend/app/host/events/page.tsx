@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApiError, api, type Event } from "@/lib/api";
+import { ApiError, api, logout, type Event } from "@/lib/api";
 import { whenLabel } from "@/lib/time";
 import { EditEventModal } from "@/components/EditEventModal";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
@@ -73,6 +73,15 @@ export default function HostDashboardPage() {
     });
   }, [events, search, category, cost]);
 
+  async function doLogout() {
+    try {
+      await logout();
+    } catch {
+      /* clear the session client-side regardless */
+    }
+    router.replace("/host");
+  }
+
   return (
     <main className="mx-auto min-h-dvh w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -86,12 +95,20 @@ export default function HostDashboardPage() {
               : "Manage the programs your organization runs."}
           </p>
         </div>
-        <Link
-          href="/host/events/new"
-          className="rounded-xl bg-accent px-5 py-3 font-semibold text-white transition-transform hover:scale-[1.02] focus-visible:scale-[1.02]"
-        >
-          + Add program
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/host/events/new"
+            className="rounded-xl bg-accent px-5 py-3 font-semibold text-white transition-transform hover:scale-[1.02] focus-visible:scale-[1.02]"
+          >
+            + Add program
+          </Link>
+          <button
+            onClick={doLogout}
+            className="rounded-xl border-2 border-edge px-5 py-3 font-semibold text-muted transition-colors hover:border-pop hover:text-pop"
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       <Toolbar
