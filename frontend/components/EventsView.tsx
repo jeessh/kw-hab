@@ -59,7 +59,7 @@ const TAG_STYLE: Record<string, { emoji: string; color: string }> = {
   Sports: { emoji: "🏐", color: "#3B82F6" },
   Games: { emoji: "🎮", color: "#3B82F6" },
   Arts: { emoji: "🎨", color: "#F59E0B" },
-  Advice: { emoji: "🎨", color: "#F59E0B" },
+  Advice: { emoji: "🌱", color: "#2FA36B" },
   Music: { emoji: "🎧", color: "#6366F1" },
   General: { emoji: "🎟️", color: "#5B5BD6" },
 };
@@ -175,8 +175,13 @@ export function EventsView() {
   // Non-wrapping window: the five cards always read left→right in order.
   const slotEvent = useCallback(
     (offset: number): Event | null => {
+      const len = events.length;
+      if (len === 0) return null;
+      // With 5+ events the window wraps so all five slots always show a real
+      // card (no blank "missing" gaps); with fewer, out-of-range slots stay blank.
+      if (len >= 5) return events[(((i + offset) % len) + len) % len];
       const idx = i + offset;
-      return idx >= 0 && idx < events.length ? events[idx] : null;
+      return idx >= 0 && idx < len ? events[idx] : null;
     },
     [events, i],
   );
