@@ -70,7 +70,17 @@ def list_events(
         query = query.filter(Event.accessibility_tags.any(tag))
     if q:
         query = query.filter(Event.title.ilike(f"%{q}%"))
-    return query.order_by(Event.starts_at.asc().nullslast()).all()
+    # Chronological, with stable tiebreakers so the order is deterministic
+    # across requests. Without these, events sharing a starts_at (or both
+    # undated → NULL) come back in arbitrary, varying order — which reads as the
+    # feed being "out of order sometimes". created_at then id break ties.
+    return (
+        query.order_by(
+            Event.starts_at.asc().nullslast(),
+            Event.created_at.asc(),
+            Event.id.asc(),
+        ).all()
+    )
 
 
 @router.get("/{event_id}", response_model=EventOut)
