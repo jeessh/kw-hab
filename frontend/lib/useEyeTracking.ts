@@ -63,6 +63,10 @@ export function useEyeTracking(
   const [calibrating, setCalibrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gaze, setGaze] = useState<GazeState>(INITIAL);
+  // A face is detected when the tracker has landmark positions. This is
+  // independent of the regression — gaze predictions stay null until the user
+  // has clicked calibration dots — so it's what drives the "face detected" hint.
+  const [faceReady, setFaceReady] = useState(false);
 
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -247,6 +251,23 @@ export function useEyeTracking(
     };
   }, [enabled]);
 
+  // Poll the tracker for a detected face while the calibration overlay is up.
+  useEffect(() => {
+    if (!calibrating) {
+      setFaceReady(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      try {
+        const pos = webgazerRef.current?.getTracker?.()?.getPositions?.();
+        setFaceReady(Array.isArray(pos) ? pos.length > 0 : !!pos);
+      } catch {
+        setFaceReady(false);
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [calibrating]);
+
   // Feed a click position to WebGazer's regression training.
   const recordCalibrationPoint = useCallback((x: number, y: number) => {
     const wg = webgazerRef.current;
@@ -278,6 +299,7 @@ export function useEyeTracking(
     calibrating,
     error,
     gaze,
+    faceReady,
     recordCalibrationPoint,
     finishCalibration,
     setPreview,

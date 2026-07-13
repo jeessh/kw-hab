@@ -25,13 +25,13 @@ export function CalibrationOverlay({
   onPoint,
   onDone,
   onCancel,
-  visible,
+  faceReady,
   setPreview,
 }: {
   onPoint: (x: number, y: number) => void;
   onDone: () => void;
   onCancel: () => void;
-  visible: boolean;
+  faceReady: boolean;
   setPreview: (show: boolean) => void;
 }) {
   const [phase, setPhase] = useState<"aim" | "dots">("aim");
@@ -68,12 +68,12 @@ export function CalibrationOverlay({
             away and move so your whole face fills the box.
           </p>
           <p
-            className={`mt-4 font-semibold ${visible ? "text-attend" : "text-amber-300"}`}
+            className={`mt-4 font-semibold ${faceReady ? "text-attend" : "text-white/70"}`}
             role="status"
           >
-            {visible
-              ? "We can see you. Press Start when your face fills the box."
-              : "Looking for your face… turn on your webcam and find good light."}
+            {faceReady
+              ? "Face detected. Press Start."
+              : "Line your face up in the box, then press Start. (No box? Allow the camera and refresh.)"}
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
             <button

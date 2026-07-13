@@ -470,6 +470,7 @@ export function EventsView({
     supported: eyeSupported,
     calibrating,
     gaze,
+    faceReady,
     recordCalibrationPoint,
     finishCalibration,
     setPreview,
@@ -565,7 +566,7 @@ export function EventsView({
           onPoint={recordCalibrationPoint}
           onDone={finishCalibration}
           onCancel={() => void setPref({ eye_tracking_enabled: false })}
-          visible={gaze.visible}
+          faceReady={faceReady}
           setPreview={setPreview}
         />
       )}

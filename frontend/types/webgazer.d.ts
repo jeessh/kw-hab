@@ -19,6 +19,7 @@ declare module "webgazer" {
     applyKalmanFilter(apply: boolean): WebGazer;
     clearData(): Promise<void>;
     removeMouseEventListeners(): WebGazer;
+    getTracker(): { getPositions?(): number[][] | null } | null;
   }
 
   const webgazer: WebGazer;

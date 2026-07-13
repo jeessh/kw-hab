@@ -29,10 +29,10 @@ sharing that username (names may repeat; icons never do).
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # then paste your Supabase DATABASE_URL + a JWT_SECRET
-python -m app.seed            # optional: sample hosts + events
+python3 -m app.seed
 uvicorn app.main:app --reload
 ```
 
