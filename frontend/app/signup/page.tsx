@@ -135,7 +135,7 @@ export default function SignupPage() {
               Choose your 3 icons
             </h1>
             <p className="mt-2 text-lg text-muted">
-              Pick 3 in an order you&apos;ll remember. This is how you sign in.
+              Pick 3 in an order you&apos;ll remember. The order is how you sign in.
             </p>
 
             {/* chosen sequence so far */}

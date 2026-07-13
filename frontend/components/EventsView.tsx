@@ -150,10 +150,12 @@ export function EventsView({
     cancel: cancelSpeech,
   } = useTextToSpeech();
 
-  // Events are fetched by the route in parallel with the gate; consume that.
+  // Consume the route's parallel prefetch; if it failed (e.g. a blip during the
+  // auth check), fetch fresh now that we've mounted past the gate.
   useEffect(() => {
     let alive = true;
     eventsPromise
+      .catch(() => api<Event[]>("/events"))
       .then((evRes) => {
         if (!alive) return;
         setEvents(evRes);
@@ -1236,7 +1238,7 @@ function ConfirmSweep() {
       <div className="text-center">
         <div className="text-6xl">✓</div>
         <p className="mt-2 font-display text-3xl font-extrabold">Saved!</p>
-        <p className="mt-1 text-lg text-white/80">Added to your events.</p>
+        <p className="mt-1 text-lg text-white/80">Added to your saved events.</p>
       </div>
     </motion.div>
   );

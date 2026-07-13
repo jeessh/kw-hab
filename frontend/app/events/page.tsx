@@ -7,8 +7,9 @@ import { api, type Event } from "@/lib/api";
 
 export default function EventsPage() {
   // Start the events fetch right away, in parallel with the auth gate, so cards
-  // are ready the moment auth clears. Client-only (it needs the cookie); the
-  // swallow-catch covers the case where auth fails and EventsView never mounts.
+  // are ready the moment auth clears. Client-only (needs the cookie); the
+  // swallow-catch covers auth failing and EventsView never mounting. (Strict
+  // Mode double-fires this GET in dev; harmless, and keeps the parallelism.)
   const [eventsPromise] = useState<Promise<Event[]>>(() => {
     if (typeof window === "undefined") return Promise.resolve([]);
     const p = api<Event[]>("/events");
