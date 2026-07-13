@@ -192,6 +192,10 @@ export function useEyeTracking(
 
         // Fresh model each enable: don't reload a previous (possibly bad)
         // calibration from IndexedDB, which would otherwise stick forever.
+        // The mediapipe facemesh assets are served from /public (node_modules
+        // isn't on the web path). Point WebGazer at that absolute path, else the
+        // model 404s, never loads, and no face is ever detected.
+        webgazer.params.faceMeshSolutionPath = "/mediapipe/face_mesh";
         webgazer.saveDataAcrossSessions(false);
         webgazer.showPredictionPoints(false); // we render our own cursor
         webgazer.applyKalmanFilter(true);

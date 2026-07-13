@@ -4,3 +4,6 @@ out/
 .env*.local
 next-env.d.ts
 *.tsbuildinfo
+
+# webgazer facemesh assets, copied from node_modules by copy-webgazer
+/public/mediapipe

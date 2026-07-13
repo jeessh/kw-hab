@@ -20,6 +20,7 @@ declare module "webgazer" {
     clearData(): Promise<void>;
     removeMouseEventListeners(): WebGazer;
     getTracker(): { getPositions?(): number[][] | null } | null;
+    params: { faceMeshSolutionPath: string };
   }
 
   const webgazer: WebGazer;
