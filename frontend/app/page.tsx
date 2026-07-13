@@ -58,7 +58,7 @@ export default function LandingPage() {
           )}
         </div>
 
-        {!isHost && (
+        {session !== null && !isHost && (
           <p className="mt-8 text-sm text-muted">
             Are you an organizer?{" "}
             <Link
