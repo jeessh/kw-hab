@@ -576,7 +576,6 @@ export function EventsView({
         <div className="pointer-events-none absolute left-4 top-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink/85 px-3 py-1.5 text-sm font-medium text-white">
           <span
             className={`h-2 w-2 rounded-full ${gaze.visible ? "bg-attend" : "bg-white/40"}`}
-            title={gaze.visible ? "Tracking your eyes" : "Looking for your eyes"}
           />
           👁 Eye tracking on
         </div>
