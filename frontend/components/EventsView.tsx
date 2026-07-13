@@ -29,8 +29,8 @@ import { countdown } from "@/lib/time";
 import { useHold } from "@/lib/useHold";
 import { useTextToSpeech } from "@/lib/useTextToSpeech";
 import { useSpeechCommands } from "@/lib/useSpeechCommands";
-import { useEyeTracking } from "@/lib/useEyeTracking";
-import { GazeCursor } from "@/components/GazeCursor";
+import { useHeadTracking } from "@/lib/useHeadTracking";
+import { HeadCursor } from "@/components/HeadCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { Modal } from "@/components/Modal";
@@ -110,7 +110,7 @@ export function EventsView({
   const [voiceEnabled, setVoiceEnabled] = useState(
     initialMe.voice_commands_enabled,
   );
-  const [eyeEnabled, setEyeEnabled] = useState(initialMe.eye_tracking_enabled);
+  const [headEnabled, setHeadEnabled] = useState(initialMe.eye_tracking_enabled);
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
@@ -366,6 +366,9 @@ export function EventsView({
   const viewRef = useRef(view);
   viewRef.current = view;
   const navBlocked = () => flyingRef.current || viewRef.current === "settings";
+  // True once a press-dwell commits a move, so the click that fires on release
+  // of that same press doesn't navigate a second time.
+  const navFiredRef = useRef(false);
 
   // Dwelling a side zone slides the carousel; when the timer fills it moves a
   // card and, while the pointer stays, repeats so you can browse continuously.
@@ -390,6 +393,7 @@ export function EventsView({
             setPeekSide(null);
             return;
           }
+          navFiredRef.current = true;
           if (side === "left") prev();
           else next();
           if (peekSideRef.current === side) runNav(side, ms);
@@ -408,6 +412,22 @@ export function EventsView({
     [holdNav, runNav],
   );
 
+  // Click = navigate immediately (skipping the dwell), unless this click is the
+  // release of a press-dwell that already committed.
+  const clickNav = useCallback(
+    (side: "left" | "right") => {
+      if (navFiredRef.current) {
+        navFiredRef.current = false;
+        return;
+      }
+      if (navBlocked()) return;
+      if (side === "left") prev();
+      else next();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [prev, next],
+  );
+
   // Pointer left / released the zone before completing → smoothly slide back.
   const resetNav = useCallback(() => {
     peekSideRef.current = null;
@@ -423,7 +443,7 @@ export function EventsView({
     if (patch.voice_commands_enabled !== undefined)
       setVoiceEnabled(patch.voice_commands_enabled);
     if (patch.eye_tracking_enabled !== undefined)
-      setEyeEnabled(patch.eye_tracking_enabled);
+      setHeadEnabled(patch.eye_tracking_enabled);
     setMe((m) => (m ? { ...m, ...patch } : m));
     try {
       await updateMe(patch);
@@ -441,7 +461,7 @@ export function EventsView({
     router.replace("/");
   }, [router]);
 
-  // The four card actions, shared by voice + eye-tracking for identical behavior.
+  // The four card actions, shared by voice + head-tracking for identical behavior.
   const actionHandlers = useMemo(
     () => ({
       onNext: () => {
@@ -465,17 +485,20 @@ export function EventsView({
     speaking,
   );
 
-  // ---- eye tracking (gaze-dwell while enabled) ----
+  // ---- head tracking (cursor-dwell while enabled) ----
   const {
-    supported: eyeSupported,
+    supported: headSupported,
     calibrating,
-    gaze,
+    cursor,
     faceReady,
+    debug: headDebug,
+    error: headError,
+    readProxy,
     recordCalibrationPoint,
     finishCalibration,
     setPreview,
-  } = useEyeTracking(
-    eyeEnabled,
+  } = useHeadTracking(
+    headEnabled,
     actionHandlers,
     // Freeze dwell while a panel is open so looking around doesn't fire actions.
     view === "settings" || a11yOpen || savedOpen,
@@ -559,26 +582,49 @@ export function EventsView({
       {/* ambient ground */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff_0%,#EEEBF5_55%,#E6E1F2_100%)]" />
 
-      {/* eye tracking: gaze cursor + one-time calibration overlay */}
-      {eyeEnabled && eyeSupported && <GazeCursor gaze={gaze} />}
-      {eyeEnabled && eyeSupported && calibrating && (
+      {/* head tracking: cursor + one-time calibration overlay */}
+      {headEnabled && headSupported && <HeadCursor cursor={cursor} />}
+      {headEnabled && headSupported && calibrating && (
         <CalibrationOverlay
           onPoint={recordCalibrationPoint}
-          onDone={finishCalibration}
+          onDone={() => {
+            finishCalibration();
+            // Close the accessibility menu so dwell (paused while it's open)
+            // starts working the moment tracking goes live.
+            setA11yOpen(false);
+          }}
           onCancel={() => void setPref({ eye_tracking_enabled: false })}
           faceReady={faceReady}
+          readProxy={readProxy}
           setPreview={setPreview}
         />
       )}
 
-      {/* eye tracking active indicator — stable text; the dot shows live status
+      {/* head tracking active indicator — stable text; the dot shows live status
           (green = we see you) so intermittent detection doesn't spam readers */}
-      {eyeEnabled && eyeSupported && !calibrating && (
+      {headEnabled && headSupported && !calibrating && (
         <div className="pointer-events-none absolute left-4 top-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink/85 px-3 py-1.5 text-sm font-medium text-white">
           <span
-            className={`h-2 w-2 rounded-full ${gaze.visible ? "bg-attend" : "bg-white/40"}`}
+            className={`h-2 w-2 rounded-full ${cursor.visible ? "bg-attend" : "bg-white/40"}`}
           />
-          👁 Eye tracking on
+          🧭 Head tracking on
+        </div>
+      )}
+
+      {/* TEMP head-tracking diagnostics — remove once calibration is confirmed */}
+      {headEnabled && headSupported && (
+        <div className="pointer-events-none fixed bottom-4 left-4 z-50 rounded-lg bg-black/85 px-3 py-2 font-mono text-xs leading-5 text-lime-300">
+          <div>face: {headDebug.faceCount > 0 ? `yes (${headDebug.faceCount} pts)` : "NO"}</div>
+          <div>frames: {headDebug.frames}</div>
+          <div>
+            proxy:{" "}
+            {headDebug.proxy
+              ? `${headDebug.proxy.yaw.toFixed(2)}, ${headDebug.proxy.pitch.toFixed(2)}`
+              : "null"}
+          </div>
+          <div>samples: {headDebug.samples}</div>
+          <div>calibrated: {headDebug.calibrated ? "yes" : "no"}</div>
+          {headError && <div className="text-red-400">err: {headError}</div>}
         </div>
       )}
 
@@ -629,9 +675,9 @@ export function EventsView({
         voiceSupported={voiceSupported}
         onToggleTts={(v) => void setPref({ tts_enabled: v })}
         onToggleVoice={(v) => void setPref({ voice_commands_enabled: v })}
-        eyeEnabled={eyeEnabled}
-        eyeSupported={eyeSupported}
-        onToggleEye={(v) => void setPref({ eye_tracking_enabled: v })}
+        headEnabled={headEnabled}
+        headSupported={headSupported}
+        onToggleHead={(v) => void setPref({ eye_tracking_enabled: v })}
         listening={voiceEnabled && listening}
       />
 
@@ -675,8 +721,12 @@ export function EventsView({
                 active={peekSide === "left"}
                 disabled={flying}
                 onEnter={() => startNav("left", NAV_HOVER_MS)}
-                onDown={() => startNav("left", NAV_PRESS_MS)}
+                onDown={() => {
+                  navFiredRef.current = false;
+                  startNav("left", NAV_PRESS_MS);
+                }}
                 onUp={() => startNav("left", NAV_HOVER_MS)}
+                onClick={() => clickNav("left")}
                 onLeave={resetNav}
               />
               <SideZone
@@ -685,8 +735,12 @@ export function EventsView({
                 active={peekSide === "right"}
                 disabled={flying}
                 onEnter={() => startNav("right", NAV_HOVER_MS)}
-                onDown={() => startNav("right", NAV_PRESS_MS)}
+                onDown={() => {
+                  navFiredRef.current = false;
+                  startNav("right", NAV_PRESS_MS);
+                }}
                 onUp={() => startNav("right", NAV_HOVER_MS)}
+                onClick={() => clickNav("right")}
                 onLeave={resetNav}
               />
 
@@ -1010,9 +1064,9 @@ function AccessibilityMenu({
   voiceSupported,
   onToggleTts,
   onToggleVoice,
-  eyeEnabled,
-  eyeSupported,
-  onToggleEye,
+  headEnabled,
+  headSupported,
+  onToggleHead,
   listening,
 }: {
   open: boolean;
@@ -1023,9 +1077,9 @@ function AccessibilityMenu({
   voiceSupported: boolean;
   onToggleTts: (v: boolean) => void;
   onToggleVoice: (v: boolean) => void;
-  eyeEnabled: boolean;
-  eyeSupported: boolean;
-  onToggleEye: (v: boolean) => void;
+  headEnabled: boolean;
+  headSupported: boolean;
+  onToggleHead: (v: boolean) => void;
   listening: boolean;
 }) {
   return (
@@ -1082,12 +1136,12 @@ function AccessibilityMenu({
               onChange={onToggleVoice}
             />
             <MenuToggle
-              label="Eye tracking (gaze control)"
-              hint="Look at a screen edge to move, save, or open settings."
-              checked={eyeEnabled}
-              disabled={!eyeSupported}
+              label="Head tracking"
+              hint="Turn your head toward a screen edge to move, save, or open settings."
+              checked={headEnabled}
+              disabled={!headSupported}
               disabledHint="Needs a webcam on Chrome or Edge over https."
-              onChange={onToggleEye}
+              onChange={onToggleHead}
             />
           </div>
         </div>
@@ -1261,8 +1315,8 @@ function ConfirmSweep() {
 
 /* ---------------- side nav ---------------- */
 
-// Whole-flank hover/press target: a dwell slides the carousel and, when it
-// fills, moves a card. There is no click-to-navigate; the dwell is the only path.
+// Whole-flank target: click to move immediately, or hover/press to build a
+// dwell that slides the carousel and repeats while the pointer stays.
 function SideZone({
   side,
   progress,
@@ -1272,6 +1326,7 @@ function SideZone({
   onLeave,
   onDown,
   onUp,
+  onClick,
 }: {
   side: "left" | "right";
   progress: number;
@@ -1281,6 +1336,7 @@ function SideZone({
   onLeave: () => void;
   onDown: () => void;
   onUp: () => void;
+  onClick: () => void;
 }) {
   const isLeft = side === "left";
   return (
@@ -1291,6 +1347,7 @@ function SideZone({
       onPointerDown={disabled ? undefined : onDown}
       onPointerUp={onUp}
       onPointerCancel={onLeave}
+      onClick={disabled ? undefined : onClick}
       className={`absolute inset-y-6 z-20 flex cursor-pointer items-center ${
         isLeft ? "left-0 justify-start pl-3" : "right-0 justify-end pr-3"
       }`}

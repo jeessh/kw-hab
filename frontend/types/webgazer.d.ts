@@ -1,5 +1,5 @@
 // Minimal ambient types for WebGazer (the package ships no declarations).
-// We only touch the handful of methods used in useEyeTracking.
+// We only touch the handful of methods used in useHeadTracking.
 declare module "webgazer" {
   type GazeData = { x: number; y: number } | null;
 
