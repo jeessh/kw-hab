@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 
-// /auth/me never 401s — returns { authenticated:false } when there's no cookie.
+// /auth/me never 401s; it returns { authenticated:false } when there's no cookie.
 type Session = { authenticated: boolean; role?: string };
 
 export default function LandingPage() {
@@ -41,7 +41,7 @@ export default function LandingPage() {
           KW Community Compass
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-xl text-muted sm:text-2xl">
-          Find community programming that fits you — all in one place.
+          Find community programs that fit you, all in one place.
         </p>
 
         <div className="mt-10 flex min-h-[4.5rem] flex-col items-center">

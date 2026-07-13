@@ -51,14 +51,9 @@ function browserSupportsEyeTracking(): boolean {
   );
 }
 
-/**
- * Gaze-controlled navigation via WebGazer (lazy-loaded, client-side only — the
- * webcam feed never leaves the browser). Mirrors useSpeechCommands: pass the
- * same four handlers. Looking at a screen edge for 2s arms that action, then a
- * 1.5s confirm ring fires it. Returns live gaze state to drive the cursor UI.
- *
- * `paused` freezes dwell (used while a panel is open) without tearing down.
- */
+// Gaze navigation via WebGazer (lazy-loaded; the webcam feed stays in the
+// browser). Same four handlers as useSpeechCommands. Looking at an edge for 2s
+// arms an action, then a 1.5s confirm ring fires it. `paused` freezes dwell.
 export function useEyeTracking(
   enabled: boolean,
   handlers: EyeTrackingHandlers,
@@ -80,12 +75,10 @@ export function useEyeTracking(
   const dwellRef = useRef<{ zone: GazeZone; stage: DwellStage; start: number }>(
     { zone: null, stage: "idle", start: 0 },
   );
-  // Guards WebGazer's begin()/calibration to run ONCE per enable — without it,
-  // React StrictMode's double-mount (and any re-render that re-runs the effect)
-  // tears WebGazer down and re-shows the calibration overlay ("the flash").
+  // Runs begin()/calibration ONCE per enable; without it StrictMode's remount
+  // re-tears-down WebGazer and re-flashes the calibration overlay.
   const startedRef = useRef(false);
-  // Pending deferred-teardown timer (see cleanup) so a StrictMode remount can
-  // cancel it before it fires.
+  // Deferred-teardown timer, so a StrictMode remount can cancel it first.
   const teardownTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -102,7 +95,7 @@ export function useEyeTracking(
     const w = window.innerWidth;
     const h = window.innerHeight;
 
-    // Exponential moving average → the "smooth, blended" motion.
+    // Exponential moving average for smooth motion.
     const prev = smoothRef.current ?? { x: data.x, y: data.y };
     const sx = prev.x + (data.x - prev.x) * SMOOTH;
     const sy = prev.y + (data.y - prev.y) * SMOOTH;
@@ -148,17 +141,14 @@ export function useEyeTracking(
       progress,
     });
   }, []);
-  // Keep the WebGazer listener pointed at the latest onGaze without making the
-  // start effect depend on it (which would re-run and re-flash calibration).
+  // Latest onGaze without making the start effect depend on it (avoids re-flash).
   const onGazeRef = useRef(onGaze);
   onGazeRef.current = onGaze;
 
   useEffect(() => {
     if (!enabled) return; // disable path → let any deferred teardown fire
-    // A remount arrived before a deferred teardown fired → cancel it and keep
-    // the existing WebGazer session (this is the StrictMode double-mount, where
-    // enabled is still true). A genuine disable returned above, so its teardown
-    // still fires.
+    // StrictMode remount before the deferred teardown fired: cancel it and keep
+    // the session (a real disable returned above, so its teardown still fires).
     if (teardownTimerRef.current !== null) {
       window.clearTimeout(teardownTimerRef.current);
       teardownTimerRef.current = null;
@@ -167,8 +157,7 @@ export function useEyeTracking(
       setError("Eye tracking needs a webcam and a secure (https) connection.");
       return;
     }
-    // Already started for this enable → do nothing. This is what stops the
-    // calibration overlay from re-flashing on StrictMode remounts / re-renders.
+    // Already started for this enable: do nothing (stops the re-flash).
     if (startedRef.current) return;
     startedRef.current = true;
 
@@ -200,8 +189,8 @@ export function useEyeTracking(
       } catch {
         if (startedRef.current) {
           setError(
-            "Could not start eye tracking — check webcam permission and that " +
-              "you're on Chrome or Edge.",
+            "Couldn't start eye tracking. Check your webcam permission and " +
+              "use Chrome or Edge.",
           );
           setCalibrating(false);
           startedRef.current = false;
@@ -210,10 +199,8 @@ export function useEyeTracking(
     })();
 
     return () => {
-      // Defer teardown a tick. StrictMode (dev) unmounts→remounts synchronously
-      // in the same frame; the remount's effect body clears this timer via
-      // teardownTimer, so WebGazer is NOT torn down and calibration does NOT
-      // re-flash. A genuine disable/unmount lets the timer fire and tears down.
+      // Defer teardown a tick: a StrictMode remount clears this timer first, so
+      // WebGazer survives and doesn't re-flash. A real disable lets it fire.
       teardownTimerRef.current = window.setTimeout(() => {
         startedRef.current = false;
         const wg = webgazerRef.current;
@@ -234,8 +221,7 @@ export function useEyeTracking(
     };
   }, [enabled]);
 
-  // Record a calibration sample at a screen point the user is looking at +
-  // clicking. WebGazer trains its regression from click locations.
+  // Feed a click position to WebGazer's regression training.
   const recordCalibrationPoint = useCallback((x: number, y: number) => {
     const wg = webgazerRef.current;
     try {

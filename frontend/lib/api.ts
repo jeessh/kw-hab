@@ -23,11 +23,8 @@ export async function api<T = unknown>(
   return (await res.json()) as T;
 }
 
-/**
- * Upload an image file to the host-only endpoint and return its public URL.
- * Uses FormData directly (not `api()`) so the browser sets the multipart
- * boundary — forcing application/json would break the upload.
- */
+// Uploads via FormData (not api()) so the browser sets the multipart boundary;
+// forcing application/json would break it.
 export async function uploadImage(file: File): Promise<string> {
   const body = new FormData();
   body.append("file", file);

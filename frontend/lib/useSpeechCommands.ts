@@ -21,15 +21,10 @@ function RecognitionCtor(): AnyRecognition | null {
   );
 }
 
-/**
- * Continuous voice-command listener. While `enabled`, it keeps a recognition
- * session open (auto-restarting, since the engine stops itself periodically)
- * and maps spoken keywords to the four card actions. Not supported in Firefox.
- *
- * `paused` gates the mic without tearing down the session — used to stop the
- * recognizer from hearing the text-to-speech bot read the event aloud (which
- * would feed the bot's own words back in as commands).
- */
+// Continuous voice-command listener: maps spoken keywords to the four card
+// actions, auto-restarting since the engine stops itself. Not in Firefox.
+// `paused` mutes the mic (without tearing down) while TTS speaks, so the
+// recognizer doesn't hear the bot and feed its words back as commands.
 export function useSpeechCommands(
   enabled: boolean,
   handlers: SpeechCommandHandlers,
@@ -95,7 +90,7 @@ export function useSpeechCommands(
       }
     };
     rec.onerror = (e: any) => {
-      // Don't auto-restart on persistent failures — that would hot-loop.
+      // Don't auto-restart on persistent failures; that would hot-loop.
       if (
         e?.error === "not-allowed" ||
         e?.error === "service-not-allowed" ||

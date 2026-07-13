@@ -13,12 +13,8 @@ const ZONE_LABEL: Record<string, string> = {
   down: "↓ Save",
 };
 
-/**
- * The "smooth, blended motion circle" — a soft glowing blob that follows the
- * (already-smoothed) gaze point. While a dwell is arming/confirming it grows
- * and draws a radial ring; the matching screen edge glows so the user sees
- * which action they're about to trigger.
- */
+// Glowing blob at the smoothed gaze point; grows and draws a ring while a
+// dwell arms/confirms, and glows the matching edge for the pending action.
 export function GazeCursor({ gaze }: { gaze: GazeState }) {
   if (!gaze.visible) return null;
 

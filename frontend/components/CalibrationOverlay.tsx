@@ -17,12 +17,8 @@ const POINTS = [
 
 const CLICKS_PER_POINT = 3; // more clicks per dot = better regression fit
 
-/**
- * Full-screen calibration: the user looks at each dot and clicks it a few
- * times, training WebGazer's gaze→screen mapping. Reports each click position
- * so the hook can feed it to webgazer.recordScreenPosition, and calls onDone
- * when all nine points are complete.
- */
+// Look-and-click calibration that trains WebGazer's gaze→screen mapping.
+// Reports each click via onPoint; calls onDone once every dot is complete.
 export function CalibrationOverlay({
   onPoint,
   onDone,

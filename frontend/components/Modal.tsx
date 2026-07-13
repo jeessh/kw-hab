@@ -6,11 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
-/**
- * Accessible dialog shell: role="dialog" + aria-modal, focus trap, Esc to
- * close, backdrop-click to close, and focus restoration to the trigger.
- * Consumers supply a title (rendered as the labelled heading) and body.
- */
+// Accessible dialog shell: focus trap, Esc/backdrop to close, focus restore.
 export function Modal({
   title,
   onClose,

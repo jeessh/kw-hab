@@ -4,7 +4,6 @@ import { useState } from "react";
 import { api, type Event } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 
-/** Confirmation dialog before permanently deleting an event. */
 export function DeleteConfirmModal({
   event,
   onClose,
@@ -24,7 +23,7 @@ export function DeleteConfirmModal({
       await api(`/events/${event.id}`, { method: "DELETE" });
       onDeleted();
     } catch {
-      setError("Could not delete — you may not have permission for this program.");
+      setError("Couldn't delete this program. You may not have permission.");
       setBusy(false);
     }
   }

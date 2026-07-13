@@ -91,7 +91,7 @@ export default function HostDashboardPage() {
           </h1>
           <p className="mt-1 text-muted">
             {isAdmin
-              ? "You're an admin — you can edit or remove any program."
+              ? "As an admin, you can edit or remove any program."
               : "Manage the programs your organization runs."}
           </p>
         </div>

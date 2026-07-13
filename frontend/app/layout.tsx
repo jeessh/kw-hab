@@ -10,7 +10,7 @@ const lexend = Lexend_Deca({
 
 export const metadata: Metadata = {
   title: "KW Community Compass",
-  description: "Find community programming that fits you — all in one place.",
+  description: "Find community programs that fit you, all in one place.",
 };
 
 export default function RootLayout({

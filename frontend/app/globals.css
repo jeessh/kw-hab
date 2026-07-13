@@ -21,7 +21,7 @@ body {
   overscroll-behavior: none;
 }
 
-/* Big, obvious focus — accessibility is the brief. */
+/* Big, obvious focus for accessibility. */
 :where(button, a, [tabindex], input):focus-visible {
   outline: 3px solid #5b5bd6;
   outline-offset: 3px;

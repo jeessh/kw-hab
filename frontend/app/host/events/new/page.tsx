@@ -64,7 +64,7 @@ export default function NewEventPage() {
         router.replace("/host");
         return;
       }
-      setError("Could not create the program. Check the fields and try again.");
+      setError("Couldn't create the program. Check the fields and try again.");
     } finally {
       setBusy(false);
     }

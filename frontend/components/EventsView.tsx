@@ -69,7 +69,7 @@ const tagStyle = (tag: string) =>
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
-/** "July 13, 2026" — the date style used on the card. */
+// Card date format, e.g. "July 13, 2026".
 function fullDate(iso?: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -81,7 +81,13 @@ function fullDate(iso?: string | null): string {
   });
 }
 
-export function EventsView({ initialMe }: { initialMe: Me }) {
+export function EventsView({
+  initialMe,
+  eventsPromise,
+}: {
+  initialMe: Me;
+  eventsPromise: Promise<Event[]>;
+}) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const [me, setMe] = useState<Me | null>(initialMe);
@@ -144,23 +150,24 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
     cancel: cancelSpeech,
   } = useTextToSpeech();
 
-  // ---- data (auth already checked by the gate; just load events) ----
+  // Consume the route's parallel prefetch; if it failed (e.g. a blip during the
+  // auth check), fetch fresh now that we've mounted past the gate.
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const evRes = await api<Event[]>("/events");
+    eventsPromise
+      .catch(() => api<Event[]>("/events"))
+      .then((evRes) => {
         if (!alive) return;
         setEvents(evRes);
         setStatus(evRes.length ? "ready" : "empty");
-      } catch {
+      })
+      .catch(() => {
         if (alive) setStatus("empty");
-      }
-    })();
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [eventsPromise]);
 
   const current = events[i];
 
@@ -182,8 +189,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
     (offset: number): Event | null => {
       const len = events.length;
       if (len === 0) return null;
-      // With 5+ events the window wraps so all five slots always show a real
-      // card (no blank "missing" gaps); with fewer, out-of-range slots stay blank.
+      // 5+ events: wrap so every slot shows a real card; fewer: blanks at the ends.
       if (len >= 5) return events[(((i + offset) % len) + len) % len];
       const idx = i + offset;
       return idx >= 0 && idx < len ? events[idx] : null;
@@ -224,8 +230,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
     window.setTimeout(() => setConfirming(false), 1300);
   }, [events, i, attend]);
 
-  // Voice "attend" → emulate a real drag: ease the card down into the slot
-  // (ramping the drop glow with it), pause, then commit like a manual release.
+  // Voice "attend": ease the card into the slot (ramping the glow), then commit.
   const dragToAttend = useCallback(async () => {
     const ev = events[i];
     if (!ev || flying) return;
@@ -249,8 +254,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
     void saveCurrent();
   }, [events, i, flying, reduceMotion, y, saveCurrent]);
 
-  // Hold complete → pop the card, shrink it into the bottom-center user icon,
-  // register attendance, then slide the next event in from the right.
+  // Hold complete: pop the card, shrink it into the drop zone, attend, advance.
   const flyToDrop = useCallback(async () => {
     const ev = events[i];
     if (!ev || flying) return;
@@ -355,18 +359,16 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
   }, [holdSettings]);
 
   // ---- side-zone navigation (hover-dwell or press-and-hold) ----
-  // A dwell can span state changes (Settings opening, a save-fly starting), so
-  // its guard reads live refs rather than the values closed over when it began
-  // — otherwise the auto-repeat would keep firing prev/next in the background.
+  // A dwell can outlive state changes, so its guard reads live refs (not values
+  // closed over at start) or auto-repeat would keep firing in the background.
   const flyingRef = useRef(flying);
   flyingRef.current = flying;
   const viewRef = useRef(view);
   viewRef.current = view;
   const navBlocked = () => flyingRef.current || viewRef.current === "settings";
 
-  // Dwelling a side zone slides the whole carousel toward the other side; when
-  // the timer completes it commits the move (prev / next) and — while the
-  // pointer stays on the zone — keeps going so you can browse continuously.
+  // Dwelling a side zone slides the carousel; when the timer fills it moves a
+  // card and, while the pointer stays, repeats so you can browse continuously.
   const runNav = useCallback(
     (side: "left" | "right", ms: number) => {
       if (navBlocked()) return;
@@ -439,8 +441,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
     router.replace("/");
   }, [router]);
 
-  // The four card actions, shared by voice + eye-tracking so every input path
-  // behaves identically. (Center gaze / silence = no-op.)
+  // The four card actions, shared by voice + eye-tracking for identical behavior.
   const actionHandlers = useMemo(
     () => ({
       onNext: () => {
@@ -581,7 +582,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
         </div>
       )}
 
-      {/* log out — top right, left of the accessibility menu */}
+      {/* log out button */}
       <button
         onClick={doLogout}
         aria-label="Log out"
@@ -603,7 +604,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
         </svg>
       </button>
 
-      {/* accessibility settings — top right */}
+      {/* accessibility settings */}
       <AccessibilityMenu
         open={a11yOpen}
         onOpenChange={setA11yOpen}
@@ -619,7 +620,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
         listening={voiceEnabled && listening}
       />
 
-      {/* large Saved Events panel — opens via the settings gesture */}
+      {/* Saved Events panel (opens via the settings gesture) */}
       <SavedEvents me={me} reveal={settingsReveal} onClose={closeSettings} />
 
       {/* ---------------- EVENTS ---------------- */}
@@ -633,7 +634,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
         {empty ? (
           <div className="flex flex-1 items-center">
             <p className="font-display text-3xl text-muted">
-              No programs yet — check back soon.
+              No programs yet. Check back soon.
             </p>
           </div>
         ) : (
@@ -674,11 +675,9 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
                 onLeave={resetNav}
               />
 
-              {/* peek group: neighbours + focused card slide together on a dwell.
-                  Sits above the side zones (z-30 > z-20) so the card always wins
-                  pointer events where they overlap, but is pointer-events-none so
-                  its transparent flanks pass hover through to the zones; the card
-                  itself re-enables events. */}
+              {/* Peek group: neighbours + focused card slide together on a dwell.
+                  Sits above the side zones but is pointer-events-none so its
+                  transparent flanks pass hover through; the card re-enables events. */}
               <motion.div
                 style={{ x: peekX }}
                 className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
@@ -698,9 +697,8 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
                   }}
                   className="pointer-events-auto relative aspect-[16/9] w-full max-w-[760px]"
                 >
-                {/* Slide the focused card in from the travel direction on
-                    next/back. Enter-only (keyed by id) so it never fights the
-                    inner drag x/y or the fly-to-icon transforms. */}
+                {/* Focused card slides in from the travel direction on next/back.
+                    Enter-only (keyed by id) so it won't fight the drag/fly transforms. */}
                 <motion.div
                   key={current.id}
                   initial={
@@ -758,7 +756,7 @@ export function EventsView({ initialMe }: { initialMe: Me }) {
           </>
         )}
 
-        {/* drop zone — drag target + hold-to-save fly target */}
+        {/* drop zone: drag + hold-to-save target */}
         <DropZone ref={dropRef} active={saveReveal > 0 || dropPulse} />
       </div>
 
@@ -857,8 +855,7 @@ function BrailleHandle() {
 
 /* ---------------- neighbours ---------------- */
 
-// Neighbour preview: rough shape only — a category-tinted top bar over a plain
-// body rectangle. No image, text, or details (those are for the focused card).
+// Neighbour preview: a category-tinted top bar over a plain body, no details.
 function CardSkeleton({ event }: { event: Event }) {
   const barColor = tagStyle(event.category || "General").color;
   return (
@@ -980,7 +977,7 @@ const DropZone = forwardRef<HTMLDivElement, { active: boolean }>(
           ↓
         </span>
         <span className="font-display text-lg font-semibold text-ink">
-          Drag Events Here!
+          Drag here to save
         </span>
       </div>
     );
@@ -1143,7 +1140,7 @@ function SavedEventsModal({
     <Modal title="Saved events" onClose={onClose}>
       {list.length === 0 ? (
         <p className="mt-3 text-lg text-muted">
-          No saved events yet. Drag an event down into the drop zone to save it.
+          No saved events yet. Drag a card down to save it.
         </p>
       ) : (
         <ul className="mt-4 flex flex-col gap-3">
@@ -1249,9 +1246,8 @@ function ConfirmSweep() {
 
 /* ---------------- side nav ---------------- */
 
-// A whole-flank hover / press target. Hovering it (or pressing on touch) starts
-// a dwell that slides the carousel and, when the timer fills, moves a card.
-// There is no click-to-navigate — the dwell is the only pointer path.
+// Whole-flank hover/press target: a dwell slides the carousel and, when it
+// fills, moves a card. There is no click-to-navigate; the dwell is the only path.
 function SideZone({
   side,
   progress,

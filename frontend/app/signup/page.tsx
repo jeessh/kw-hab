@@ -16,7 +16,7 @@ export default function SignupPage() {
   const [step, setStep] = useState<Step>("name");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
-  // Ordered selection — the tap sequence IS the credential.
+  // The tap order is the credential.
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export default function SignupPage() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setError(
-          "Those icons already belong to someone else — go back and pick a different set.",
+          "Someone else already uses those icons. Go back and pick a different set.",
         );
       } else {
         setError("Something went wrong. Please try again.");
@@ -135,8 +135,7 @@ export default function SignupPage() {
               Choose your 3 icons
             </h1>
             <p className="mt-2 text-lg text-muted">
-              Pick 3 in an order you&apos;ll remember — they become your key to
-              sign in.
+              Pick 3 in an order you&apos;ll remember. The order is how you sign in.
             </p>
 
             {/* chosen sequence so far */}

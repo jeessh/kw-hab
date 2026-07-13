@@ -21,12 +21,8 @@ type MultiProps = BaseProps & {
 
 type Props = SingleProps | MultiProps;
 
-/**
- * Drag-in / click-to-select image uploader. Uploads immediately to the
- * host-only /events/images endpoint and surfaces the returned public URL(s) —
- * no link/URL text input. Single mode = one replaceable cover; multi mode = a
- * removable thumbnail grid.
- */
+// Image uploader (drag or click). Single mode = one replaceable cover;
+// multi = a removable thumbnail grid. Uploads immediately, returns the URL(s).
 export function ImageDrop(props: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -56,7 +52,7 @@ export function ImageDrop(props: Props) {
         e instanceof ApiError
           ? e.status === 413
             ? "That image is too large (max 5 MB)."
-            : "Upload failed — please try again."
+            : "Upload failed. Please try again."
           : e instanceof Error
             ? e.message
             : "Upload failed.",

@@ -62,7 +62,7 @@ export function EditEventModal({
       });
       onSaved();
     } catch {
-      setError("Could not save — you may not have permission for this program.");
+      setError("Couldn't save this program. You may not have permission.");
       setBusy(false);
     }
   }

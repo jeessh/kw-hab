@@ -50,9 +50,8 @@ export function SavedEvents({ me, reveal, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
-  // Refetch on each open transition, so events attended since last time show
-  // up — and a transient fetch error can recover on reopen. Stale data stays
-  // visible while the refetch runs (loading/error only block when we have none).
+  // Refetch on each open so newly-attended events appear; stale data stays
+  // visible while it runs (loading/error only block when we have none).
   const prevOpen = useRef(false);
   useEffect(() => {
     const justOpened = open && !prevOpen.current;
@@ -250,8 +249,7 @@ function EmptyAll() {
         No saved events yet
       </p>
       <p className="max-w-sm text-muted">
-        Events you attend show up here — browse programs and hold a card to
-        attend.
+        Events you attend show up here. Hold a card to attend one.
       </p>
     </div>
   );

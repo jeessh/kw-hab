@@ -1,5 +1,4 @@
-// Placeholder icon set — slugs mirror the backend ICON_POOL. Swap emoji for
-// real icons later without touching logic. Keep in sync with core/icons.py.
+// Slugs mirror the backend ICON_POOL; keep in sync with core/icons.py.
 export const ICON_EMOJI: Record<string, string> = {
   tree: "🌳",
   cat: "🐱",
