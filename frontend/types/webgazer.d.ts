@@ -17,7 +17,7 @@ declare module "webgazer" {
     recordScreenPosition(x: number, y: number, type?: string): void;
     saveDataAcrossSessions(save: boolean): WebGazer;
     applyKalmanFilter(apply: boolean): WebGazer;
-    clearData(): WebGazer;
+    clearData(): Promise<void>;
     removeMouseEventListeners(): WebGazer;
   }
 

@@ -82,6 +82,9 @@ export function useEyeTracking(
   const startedRef = useRef(false);
   // Deferred-teardown timer, so a StrictMode remount can cancel it first.
   const teardownTimerRef = useRef<number | null>(null);
+  // The overlay's desired camera-preview state. setPreview writes it even before
+  // WebGazer is ready; begin() applies it once the instance exists.
+  const previewWantedRef = useRef(true);
 
   useEffect(() => {
     setSupported(browserSupportsEyeTracking());
@@ -186,9 +189,6 @@ export function useEyeTracking(
         // Fresh model each enable: don't reload a previous (possibly bad)
         // calibration from IndexedDB, which would otherwise stick forever.
         webgazer.saveDataAcrossSessions(false);
-        // Show the camera + face box during calibration so the user can
-        // position their face — accuracy hinges on a good face lock.
-        webgazer.showVideoPreview(true);
         webgazer.showPredictionPoints(false); // we render our own cursor
         webgazer.applyKalmanFilter(true);
         webgazer.setGazeListener((data: { x: number; y: number } | null) =>
@@ -208,6 +208,10 @@ export function useEyeTracking(
         // pollutes the model while the user fixates a dot and moves to it.
         webgazer.clearData();
         webgazer.removeMouseEventListeners();
+        // Apply the overlay's current preview intent (it may have toggled while
+        // WebGazer was still loading): camera on to position the face, off once
+        // the user is clicking dots so it can't cover one.
+        webgazer.showVideoPreview(previewWantedRef.current);
       } catch {
         if (startedRef.current) {
           setError(
@@ -256,6 +260,7 @@ export function useEyeTracking(
   // Toggle the camera preview (the overlay hides it while clicking dots so it
   // can't sit on top of a calibration point).
   const setPreview = useCallback((show: boolean) => {
+    previewWantedRef.current = show;
     try {
       webgazerRef.current?.showVideoPreview(show);
     } catch {
