@@ -15,6 +15,10 @@ declare module "webgazer" {
     showVideoPreview(show: boolean): WebGazer;
     showPredictionPoints(show: boolean): WebGazer;
     recordScreenPosition(x: number, y: number, type?: string): void;
+    saveDataAcrossSessions(save: boolean): WebGazer;
+    applyKalmanFilter(apply: boolean): WebGazer;
+    clearData(): WebGazer;
+    removeMouseEventListeners(): WebGazer;
   }
 
   const webgazer: WebGazer;

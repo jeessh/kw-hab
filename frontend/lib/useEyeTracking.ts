@@ -68,6 +68,8 @@ export function useEyeTracking(
   handlersRef.current = handlers;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const calibratingRef = useRef(calibrating);
+  calibratingRef.current = calibrating;
 
   // Mutable tracking state kept in refs so the rAF/listener loop never restarts.
   const webgazerRef = useRef<any>(null);
@@ -100,6 +102,14 @@ export function useEyeTracking(
     const sx = prev.x + (data.x - prev.x) * SMOOTH;
     const sy = prev.y + (data.y - prev.y) * SMOOTH;
     smoothRef.current = { x: sx, y: sy };
+
+    // While calibrating, show the cursor but freeze dwell so gaze drifting to an
+    // edge can't fire next/prev/add underneath the overlay.
+    if (calibratingRef.current) {
+      dwellRef.current = { zone: null, stage: "idle", start: 0 };
+      setGaze({ x: sx, y: sy, visible: true, zone: null, stage: "idle", progress: 0 });
+      return;
+    }
 
     const zone = zoneFor(sx, sy, w, h);
     const now = performance.now();
@@ -173,8 +183,14 @@ export function useEyeTracking(
         if (!startedRef.current) return;
         webgazerRef.current = webgazer;
 
-        webgazer.showVideoPreview(false);
+        // Fresh model each enable: don't reload a previous (possibly bad)
+        // calibration from IndexedDB, which would otherwise stick forever.
+        webgazer.saveDataAcrossSessions(false);
+        // Show the camera + face box during calibration so the user can
+        // position their face — accuracy hinges on a good face lock.
+        webgazer.showVideoPreview(true);
         webgazer.showPredictionPoints(false); // we render our own cursor
+        webgazer.applyKalmanFilter(true);
         webgazer.setGazeListener((data: { x: number; y: number } | null) =>
           onGazeRef.current(data),
         );
@@ -185,7 +201,13 @@ export function useEyeTracking(
           } catch {
             /* ignore */
           }
+          return;
         }
+        // Train ONLY from explicit calibration clicks. begin() otherwise records
+        // a sample on every mousemove (assuming gaze follows the cursor), which
+        // pollutes the model while the user fixates a dot and moves to it.
+        webgazer.clearData();
+        webgazer.removeMouseEventListeners();
       } catch {
         if (startedRef.current) {
           setError(
@@ -231,7 +253,20 @@ export function useEyeTracking(
     }
   }, []);
 
-  const finishCalibration = useCallback(() => setCalibrating(false), []);
+  // Toggle the camera preview (the overlay hides it while clicking dots so it
+  // can't sit on top of a calibration point).
+  const setPreview = useCallback((show: boolean) => {
+    try {
+      webgazerRef.current?.showVideoPreview(show);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const finishCalibration = useCallback(() => {
+    setPreview(false); // hide the camera once calibrated so it doesn't cover cards
+    setCalibrating(false);
+  }, [setPreview]);
 
   return {
     supported,
@@ -240,5 +275,6 @@ export function useEyeTracking(
     gaze,
     recordCalibrationPoint,
     finishCalibration,
+    setPreview,
   };
 }

@@ -472,6 +472,7 @@ export function EventsView({
     gaze,
     recordCalibrationPoint,
     finishCalibration,
+    setPreview,
   } = useEyeTracking(
     eyeEnabled,
     actionHandlers,
@@ -564,7 +565,22 @@ export function EventsView({
           onPoint={recordCalibrationPoint}
           onDone={finishCalibration}
           onCancel={() => void setPref({ eye_tracking_enabled: false })}
+          visible={gaze.visible}
+          setPreview={setPreview}
         />
+      )}
+
+      {/* eye tracking active indicator */}
+      {eyeEnabled && eyeSupported && !calibrating && (
+        <div
+          className="pointer-events-none absolute left-4 top-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink/85 px-3 py-1.5 text-sm font-medium text-white"
+          role="status"
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${gaze.visible ? "bg-attend" : "bg-white/40"}`}
+          />
+          👁 {gaze.visible ? "Tracking" : "Find your eyes…"}
+        </div>
       )}
 
       {/* screen-reader announcement */}
