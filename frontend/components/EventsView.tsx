@@ -18,7 +18,6 @@ import {
   useTransform,
 } from "framer-motion";
 import {
-  ApiError,
   api,
   logout,
   updateMe,
@@ -82,10 +81,10 @@ function fullDate(iso?: string | null): string {
   });
 }
 
-export function EventsView() {
+export function EventsView({ initialMe }: { initialMe: Me }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
-  const [me, setMe] = useState<Me | null>(null);
+  const [me, setMe] = useState<Me | null>(initialMe);
   const [events, setEvents] = useState<Event[]>([]);
   const [i, setI] = useState(0);
   const [saved, setSaved] = useState<Set<string>>(new Set());
@@ -100,10 +99,12 @@ export function EventsView() {
   const [dropPulse, setDropPulse] = useState(false);
   const [srMessage, setSrMessage] = useState("");
 
-  // Voice-accessibility prefs (hydrated from /users/me, persisted on toggle).
-  const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [eyeEnabled, setEyeEnabled] = useState(false);
+  // Voice-accessibility prefs (seeded from initialMe, persisted on toggle).
+  const [ttsEnabled, setTtsEnabled] = useState(initialMe.tts_enabled);
+  const [voiceEnabled, setVoiceEnabled] = useState(
+    initialMe.voice_commands_enabled,
+  );
+  const [eyeEnabled, setEyeEnabled] = useState(initialMe.eye_tracking_enabled);
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
@@ -143,29 +144,23 @@ export function EventsView() {
     cancel: cancelSpeech,
   } = useTextToSpeech();
 
-  // ---- data ----
+  // ---- data (auth already checked by the gate; just load events) ----
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const [meRes, evRes] = await Promise.all([
-          api<Me>("/users/me"),
-          api<Event[]>("/events"),
-        ]);
-        setMe(meRes);
-        setTtsEnabled(meRes.tts_enabled);
-        setVoiceEnabled(meRes.voice_commands_enabled);
-        setEyeEnabled(meRes.eye_tracking_enabled);
+        const evRes = await api<Event[]>("/events");
+        if (!alive) return;
         setEvents(evRes);
         setStatus(evRes.length ? "ready" : "empty");
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) {
-          router.replace("/signup");
-          return;
-        }
-        setStatus("empty");
+      } catch {
+        if (alive) setStatus("empty");
       }
     })();
-  }, [router]);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const current = events[i];
 
@@ -441,7 +436,7 @@ export function EventsView() {
     } catch {
       /* clear the session client-side regardless */
     }
-    router.replace("/signup");
+    router.replace("/");
   }, [router]);
 
   // The four card actions, shared by voice + eye-tracking so every input path

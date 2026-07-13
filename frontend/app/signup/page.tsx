@@ -49,7 +49,7 @@ export default function SignupPage() {
       setMode(res.mode);
       setStep("transition");
       // Cookie is set by the endpoint; let the transition play, then continue.
-      window.setTimeout(() => router.replace("/"), 1900);
+      window.setTimeout(() => router.replace("/events"), 1900);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setError(
