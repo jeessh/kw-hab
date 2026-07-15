@@ -173,15 +173,21 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
 
 @router.post("/signup/host", status_code=status.HTTP_201_CREATED)
 def signup_host(body: HostSignup, response: Response, db: Session = Depends(get_db)):
-    if db.query(Host).filter(Host.email == body.email.lower()).first():
+    email = body.email.strip().lower()
+    if db.query(Host).filter(Host.email == email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
     host = Host(
         name=body.name.strip(),
-        email=body.email.strip().lower(),
+        email=email,
         password_hash=hash_password(body.password),
     )
     db.add(host)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Race with a concurrent signup for the same email.
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
     db.refresh(host)
     set_auth_cookie(
         response, create_access_token(host.id, "host", is_admin=host.is_admin)

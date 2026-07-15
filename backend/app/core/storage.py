@@ -24,9 +24,10 @@ class StorageError(RuntimeError):
     """Raised when the upload cannot be performed or the bucket rejects it."""
 
 
-def upload_image(data: bytes, content_type: str) -> str:
+async def upload_image(data: bytes, content_type: str) -> str:
     """Upload image bytes to the configured bucket; return the public URL.
 
+    Async so the (up to 30s) storage round trip never blocks the event loop.
     Raises StorageError if storage isn't configured or the upload fails.
     """
     if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
@@ -42,17 +43,17 @@ def upload_image(data: bytes, content_type: str) -> str:
     upload_url = f"{base}/storage/v1/object/{bucket}/{key}"
 
     try:
-        res = httpx.post(
-            upload_url,
-            content=data,
-            headers={
-                "Authorization": f"Bearer {settings.SUPABASE_SECRET_KEY}",
-                "apikey": settings.SUPABASE_SECRET_KEY,
-                "Content-Type": content_type,
-                "cache-control": "3600",
-            },
-            timeout=30,
-        )
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                upload_url,
+                content=data,
+                headers={
+                    "Authorization": f"Bearer {settings.SUPABASE_SECRET_KEY}",
+                    "apikey": settings.SUPABASE_SECRET_KEY,
+                    "Content-Type": content_type,
+                    "cache-control": "3600",
+                },
+            )
     except httpx.HTTPError as exc:
         raise StorageError(f"Could not reach image storage: {exc}") from exc
 

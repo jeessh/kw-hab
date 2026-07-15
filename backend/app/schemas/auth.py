@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserSignup(BaseModel):
@@ -8,7 +8,7 @@ class UserSignup(BaseModel):
     # a random unique set (legacy behaviour).
     icons: list[str] | None = None
     # Optional custom password. If omitted, the icon password is used by default.
-    custom_password: str | None = None
+    custom_password: str | None = Field(None, min_length=8)
     # Onboarding prefs (free-form slugs from the FE chip taxonomy). Optional so
     # the plain signup path keeps working; default to empty, never null.
     accessibility_prefs: list[str] = []
@@ -35,10 +35,10 @@ class UserLogin(BaseModel):
 
 class HostSignup(BaseModel):
     name: str
-    email: str
-    password: str
+    email: EmailStr
+    password: str = Field(min_length=8)
 
 
 class HostLogin(BaseModel):
-    email: str
+    email: EmailStr
     password: str
