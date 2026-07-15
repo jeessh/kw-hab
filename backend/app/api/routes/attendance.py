@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.attendance import Attendance
@@ -24,7 +25,16 @@ def attend_event(
     if existing:
         return {"ok": True, "already": True}
     db.add(Attendance(user_id=user.id, event_id=event_id))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        # Unique violation (23505) = lost a race with a concurrent attend:
+        # same outcome as the pre-check, stay idempotent. An FK violation
+        # means the event was deleted mid-request: no attendance exists.
+        if getattr(exc.orig, "sqlstate", None) == "23505":
+            return {"ok": True, "already": True}
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
     return {"ok": True}
 
 
@@ -46,4 +56,13 @@ def unattend_event(
 def my_events(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    return [a.event for a in user.attending]
+    # One query with eager loads; iterating user.attending lazy-loads each
+    # event (and then its host/images) row by row.
+    return (
+        db.query(Event)
+        .join(Attendance, Attendance.event_id == Event.id)
+        .filter(Attendance.user_id == user.id)
+        .options(joinedload(Event.host), selectinload(Event.images))
+        .order_by(Event.starts_at.asc().nullslast(), Event.id.asc())
+        .all()
+    )

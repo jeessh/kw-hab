@@ -1,7 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy.orm import Session, joinedload
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_host, get_db
 from app.core.storage import StorageError, upload_image
@@ -15,6 +15,20 @@ router = APIRouter(prefix="/events", tags=["events"])
 # Cover + gallery uploads accept these; must match the bucket's allowed types.
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+_READ_CHUNK = 64 * 1024
+
+
+def _sniff_image_type(head: bytes) -> str | None:
+    """Actual image type from magic bytes; the client's header is untrusted."""
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 @router.post("/images", status_code=status.HTTP_201_CREATED)
@@ -27,22 +41,28 @@ async def upload_event_image(
     The frontend uploads on drop/select, then stores the returned URL on the
     event via the normal create/patch flow — no schema change.
     """
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
+    # Read in chunks so the size cap is enforced during the read, not after
+    # the whole body is already buffered.
+    data = bytearray()
+    while chunk := await file.read(_READ_CHUNK):
+        data.extend(chunk)
+        if len(data) > MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "Image is too large (max 5 MB).",
+            )
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file is empty.")
+
+    content_type = _sniff_image_type(bytes(data[:16]))
+    if content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             "Please choose a PNG, JPEG, WebP, or GIF image.",
         )
-    data = await file.read()
-    if len(data) > MAX_IMAGE_BYTES:
-        raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            "Image is too large (max 5 MB).",
-        )
-    if not data:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file is empty.")
 
     try:
-        url = upload_image(data, file.content_type)
+        url = await upload_image(bytes(data), content_type)
     except StorageError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     return {"url": url}
@@ -52,16 +72,23 @@ def _owns_or_admin(host: Host, event: Event) -> bool:
     return host.is_admin or event.host_id == host.id
 
 
+# Eager loads for EventOut serialization (host_name + images); without these
+# each serialized row lazy-loads per-relation (N+1 through pgbouncer).
+_EVENT_OUT_OPTIONS = (joinedload(Event.host), selectinload(Event.images))
+
+
 @router.get("", response_model=list[EventOut])
 def list_events(
     category: str | None = None,
     tag: str | None = None,
     free: bool | None = None,
     q: str | None = None,
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
     """Public discovery feed with needs + accessibility filters."""
-    query = db.query(Event).options(joinedload(Event.host))
+    query = db.query(Event).options(*_EVENT_OUT_OPTIONS)
     if category:
         query = query.filter(Event.category == category)
     if free is not None:
@@ -79,13 +106,21 @@ def list_events(
             Event.starts_at.asc().nullslast(),
             Event.created_at.asc(),
             Event.id.asc(),
-        ).all()
+        )
+        .limit(limit)
+        .offset(offset)
+        .all()
     )
 
 
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(event_id: uuid.UUID, db: Session = Depends(get_db)):
-    event = db.get(Event, event_id)
+    event = (
+        db.query(Event)
+        .options(*_EVENT_OUT_OPTIONS)
+        .filter(Event.id == event_id)
+        .first()
+    )
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
     return event

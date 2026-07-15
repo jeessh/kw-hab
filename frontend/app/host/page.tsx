@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 
 export default function HostAuthPage() {
   const router = useRouter();
@@ -22,12 +22,16 @@ export default function HostAuthPage() {
         mode === "login" ? { email, password } : { name, email, password };
       await api(path, { method: "POST", body: JSON.stringify(body) });
       router.push("/host/events");
-    } catch {
-      setError(
-        mode === "login"
-          ? "Wrong email or password."
-          : "Could not create that account.",
-      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        setError("Enter a valid email and a password of at least 8 characters.");
+      } else {
+        setError(
+          mode === "login"
+            ? "Wrong email or password."
+            : "Couldn't create that account.",
+        );
+      }
     } finally {
       setBusy(false);
     }

@@ -27,10 +27,22 @@ export default function HostDashboardPage() {
   const [editing, setEditing] = useState<Event | null>(null);
   const [deleting, setDeleting] = useState<Event | null>(null);
 
+  // The feed is paginated (max 200/page); page through so the dashboard
+  // always has every event, not just the first page.
+  async function fetchAllEvents(): Promise<Event[]> {
+    const PAGE = 200;
+    const all: Event[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const page = await api<Event[]>(`/events?limit=${PAGE}&offset=${offset}`);
+      all.push(...page);
+      if (page.length < PAGE) return all;
+    }
+  }
+
   async function load() {
     const [me, evs] = await Promise.all([
       api<{ is_admin: boolean; id: string }>("/auth/me"),
-      api<Event[]>("/events"),
+      fetchAllEvents(),
     ]);
     setIsAdmin(me.is_admin);
     setMyId(me.id);
