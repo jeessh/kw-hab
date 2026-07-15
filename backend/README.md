@@ -4,8 +4,8 @@ FastAPI + SQLAlchemy on Supabase Postgres (database only, not Supabase Auth).
 
 ## Data model
 
-- `users` — members; the 3-icon set is the **unique identifier**, `username`
-  (firstname_lastname) is not unique
+- `users` — members; unique on **(`username`, `icons`)** — people can share a
+  name, or an icon set, but not both
 - `hosts` — organizers; `is_admin=true` ⇒ admin
 - `events` — programming; `accessibility_tags[]`, `cover_image_url` + ordered
   `event_images` gallery
@@ -13,10 +13,12 @@ FastAPI + SQLAlchemy on Supabase Postgres (database only, not Supabase Auth).
 
 ## Auth
 
-Signup takes first + last name; the server generates the username and a unique
-random 3-icon set (e.g. `tree_cat_apple`), which joined by `_` is the default
-password (a custom password is optional). Login checks the password against
-every user sharing the username — names may repeat, icons never do.
+Members enter first + last name and pick an **ordered** 3-icon key; that pair
+is the credential. `POST /auth/user` logs in when name + icons match an
+existing account and creates one otherwise (returns `mode: "login" | "signup"`).
+The legacy split endpoints (`/auth/signup/user` with server-generated icons,
+`/auth/login/user` with username + password) still work but have no frontend
+caller.
 
 The session is an httpOnly `SameSite=Lax` JWT cookie: callers send
 `credentials: "include"` and must stay same-origin (or set `COOKIE_SECURE=true`
@@ -37,10 +39,10 @@ Interactive docs: http://localhost:8000/docs
 
 ## Endpoints
 
-- `POST /auth/signup/user` `{first_name, last_name, custom_password?}` →
-  returns the icons, sets cookie
-- `POST /auth/login/user` · `POST /auth/signup/host` · `POST /auth/login/host` ·
-  `POST /auth/logout` · `GET /auth/me`
+- `POST /auth/user` `{first_name, last_name, icons}` → login-or-signup, sets
+  cookie (`/auth/signup/user` and `/auth/login/user` are legacy)
+- `POST /auth/signup/host` · `POST /auth/login/host` · `POST /auth/logout` ·
+  `GET /auth/me`
 - `GET /events?category=&tag=&free=&q=` (public) · `POST /events` (host) ·
   `PATCH/DELETE /events/{id}` (owner/admin)
 - `POST/DELETE /events/{id}/attend` (user) · `GET /users/me/events`

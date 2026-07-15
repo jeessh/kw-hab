@@ -6,8 +6,8 @@ with KW Hab.
 
 One big card at a time: drag it into the slot, press and hold it, or hold ↓ —
 all end in the same "drop into the slot → you're attending" moment, no forms.
-Sign-up asks only for a name; the app generates a 3-icon key
-(🌳🐱🍎 = `tree_cat_apple`) as the password.
+Members enter their name and pick a 3-icon key (🌳🐱🍎) — that pair is the
+credential, and one call either logs them in or creates the account.
 
 ## Stack
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Accessible community-programming platform for Kitchener-Waterloo nonprofits
 (hackathon build). Members discover/attend programs one card at a time;
-sign-in is a 3-icon key that IS the password.
+sign-in is name + a self-picked 3-icon key that IS the password.
 
 ## Layout
 - `backend/` — FastAPI + SQLAlchemy. **Source of truth for the API.**
@@ -45,8 +45,8 @@ so FE and BE **must share one origin**. Prod env: `DATABASE_URL` (:6543),
   orchestrates every accessibility mode.
 - Accessibility modes are per-member toggles persisted on the user
   (`tts_enabled`, `voice_commands_enabled`, `eye_tracking_enabled`; loaded from
-  `GET /auth/me`), each backed by a hook in `lib/`: `useTextToSpeech`,
-  `useSpeechCommands`, `useEyeTracking`, `useHold`. Toggling PATCHes
+  `GET /users/me`), each backed by a hook in `lib/`: `useTextToSpeech`,
+  `useSpeechCommands`, `useHeadTracking`, `useHold`. Toggling PATCHes
   `/users/me` — keep the persisted pref and the active hook in sync.
 - All HTTP goes through `api()` in `lib/api.ts` (`credentials:"include"`).
   Image uploads use `uploadImage()` with raw `FormData` — never force
@@ -55,9 +55,11 @@ so FE and BE **must share one origin**. Prod env: `DATABASE_URL` (:6543),
 ## Gotchas
 - Passwords use `bcrypt` directly — do NOT reintroduce `passlib` (crashes on
   bcrypt ≥4.1). Hashes are standard `$2b$`.
-- The 3-icon set is the credential → generate with `secrets`
-  (`app/core/icons.py`), never `random`. Keyspace is ~12k combos; add login
-  rate-limiting before treating this as production auth.
+- Name + ordered 3-icon set is the credential (`POST /auth/user`,
+  login-or-signup; uniqueness on `(username, icons)`). Legacy random icon
+  allocation must use `secrets` (`app/core/icons.py`), never `random`. Keyspace
+  is 40·39·38 ≈ 59k combos; add login rate-limiting before treating this as
+  production auth.
 - `JWT_SECRET` has no default — the app fails fast if unset.
 - Roles: **members** (icon sign-in) · **hosts** (own programs) · **admins**
   (hosts with `is_admin`).
@@ -65,4 +67,6 @@ so FE and BE **must share one origin**. Prod env: `DATABASE_URL` (:6543),
 ## Status
 DB live + seeded. Deploy config present but **not yet deployed/verified** — the
 root `vercel.json` `services` schema needs validation and `vercel login` is
-pending.
+pending. `users.accessibility_prefs` / `interest_categories` exist end-to-end
+in the backend but no frontend UI sets or reads them yet (planned onboarding
+wizard + feed personalization were never built).
