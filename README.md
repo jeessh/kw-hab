@@ -1,63 +1,51 @@
 # KW Community Compass
 
-An accessible, needs-first platform where Kitchener-Waterloo nonprofits post
-community programming and members discover what fits them. Built for a one-day
-hackathon with KW Hab.
+Accessible, needs-first platform where Kitchener-Waterloo nonprofits post
+community programming and members discover what fits them. Hackathon build
+with KW Hab.
 
-## Member experience
-
-One big card at a time. To attend a program: drag the card into the slot, press
-and hold it (2s), or hold the ↓ arrow key (1.5s) — all resolve to the same "drop
-into the slot → you're attending" moment, no forms. Arrows move between programs;
-the person icon opens settings.
-
-Sign-up asks only for first and last name; the app generates a 3-icon key
-(e.g. 🌳🐱🍎 = `tree_cat_apple`) as the password.
+One big card at a time: drag it into the slot, press and hold it, or hold ↓ —
+all end in the same "drop into the slot → you're attending" moment, no forms.
+Members enter their name and pick a 3-icon key (🌳🐱🍎) — that pair is the
+credential, and one call either logs them in or creates the account.
 
 ## Stack
-- **Frontend:** Next.js (App Router) · Tailwind · Framer Motion — see [`frontend/`](frontend)
-- **Backend:** FastAPI · SQLAlchemy — see [`backend/`](backend)
-- **Database + storage:** Supabase Postgres (used as the DB; auth is custom, cookie-based)
 
-## Run it locally
+- [`frontend/`](frontend) — Next.js (App Router) · Tailwind · Framer Motion
+- [`backend/`](backend) — FastAPI · SQLAlchemy · Supabase Postgres (database
+  only; auth is custom, cookie-based)
+
+## Run locally
 
 ```bash
-# 1. Backend  (http://localhost:8000)
+# Backend → http://localhost:8000   (needs Python 3.10+)
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # paste your Supabase DATABASE_URL + a JWT_SECRET
+# create .env with DATABASE_URL and JWT_SECRET
 python -m app.seed          # optional sample data
 uvicorn app.main:app --reload
 
-# 2. Frontend (http://localhost:3000)
+# Frontend → http://localhost:3000
 cd ../frontend
 npm install
-cp .env.local.example .env.local
 npm run dev
 ```
 
-See [`backend/README.md`](backend/README.md) for the data model, permissions, and
-API reference.
+Data model and API reference: [`backend/README.md`](backend/README.md).
 
 ## Deploy (Vercel)
 
-One project via [Services](https://vercel.com/docs/services) (root [`vercel.json`](vercel.json)):
-`/api/*` routes to the FastAPI backend, everything else to the Next.js frontend.
-Shared origin keeps the `SameSite=Lax` auth cookie working.
+One project via the root [`vercel.json`](vercel.json): `/api/*` routes to the
+backend, everything else to the frontend. The shared origin keeps the
+`SameSite=Lax` auth cookie working.
 
-Production env vars:
-
-| Service  | Var | Value |
-|---|---|---|
-| backend  | `DATABASE_URL` | Supabase pooler string, port 6543, `postgresql+psycopg://…` |
-| backend  | `JWT_SECRET` | same as `backend/.env` |
-| backend  | `COOKIE_SECURE` | `true` |
-| backend  | `ROOT_PATH` | `/api` |
-| backend  | `FRONTEND_ORIGIN` | deployed URL (for CORS) |
-| frontend | `NEXT_PUBLIC_API_URL` | `/api` |
+Production env — backend: `DATABASE_URL` (Supabase pooler :6543,
+`postgresql+psycopg://…`), `JWT_SECRET`, `COOKIE_SECURE=true`, `ROOT_PATH=/api`,
+`FRONTEND_ORIGIN`; frontend: `NEXT_PUBLIC_API_URL=/api`.
 
 ## Roles
-- **Members** — discover + attend programs (simple icon sign-in)
-- **Hosts** — nonprofit organizers who add and edit their own programs
-- **Admins** — hosts who can edit any program and manage member accounts
+
+**Members** discover + attend programs (icon sign-in) · **hosts** manage their
+own programs · **admins** (hosts with `is_admin`) manage any program and any
+member account.

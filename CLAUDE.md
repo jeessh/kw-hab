@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # KW Community Compass
 
-Accessible, needs-first community-programming platform for Kitchener-Waterloo
-nonprofits (hackathon build). Members discover/attend programs via a tactile,
-one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password**.
+Accessible community-programming platform for Kitchener-Waterloo nonprofits
+(hackathon build). Members discover/attend programs one card at a time;
+sign-in is name + a self-picked 3-icon key that IS the password.
 
 ## Layout
 - `backend/` — FastAPI + SQLAlchemy. **Source of truth for the API.**
@@ -15,58 +15,58 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
 
 ## Run locally
 ```bash
-# backend → http://localhost:8000
-cd backend && .venv/bin/uvicorn app.main:app --reload
-# frontend → http://localhost:3000
-cd frontend && npm run dev
+cd backend && .venv/bin/uvicorn app.main:app --reload   # http://localhost:8000
+cd frontend && npm run dev                              # http://localhost:3000
 ```
-`backend/.env` (gitignored) holds `DATABASE_URL` + `JWT_SECRET`; seed with
-`.venv/bin/python -m app.seed` (idempotent; skips if hosts exist).
-Frontend also has `npm run typecheck` (`tsc --noEmit`) and `npm run build`.
-Interactive API docs: http://localhost:8000/docs. **There is no test suite,
-linter, or CI** — verify changes by running the app and typecheck.
+- The venv must be Python 3.10+ (code uses `X | None` unions; macOS system 3.9
+  crashes at import).
+- `backend/.env` (gitignored) holds `DATABASE_URL` + `JWT_SECRET`. Seed with
+  `.venv/bin/python -m app.seed` (idempotent).
+- **No test suite, linter, or CI** — verify by running the app plus
+  `npm run typecheck` / `npm run build`. API docs: http://localhost:8000/docs.
 
 ## Database (Supabase)
-- Project ref `xybhshhcgdvfgryklsze`, region `aws-1-us-west-2`.
-- Pooler host `aws-1-us-west-2.pooler.supabase.com` — **:5432 session** (local),
-  **:6543 transaction** (serverless/Vercel). URL prefix must be `postgresql+psycopg://`.
-- Auth is **custom cookie-based** (not Supabase Auth); RLS is intentionally off —
+- Ref `xybhshhcgdvfgryklsze`, pooler `aws-1-us-west-2.pooler.supabase.com` —
+  **:5432 session** (local), **:6543 transaction** (Vercel). URL prefix must be
+  `postgresql+psycopg://`.
+- Auth is custom cookie-based (not Supabase Auth); RLS is intentionally off —
   never expose the anon key or hit the DB from the browser.
+- Engine uses `NullPool` + `prepare_threshold=None` for pgbouncer compatibility.
 
-## Same-origin deploy (why it matters)
-Auth cookie is `SameSite=Lax`, frontend fetches with `credentials:"include"`, so FE
-and BE **must share one origin**. In prod set `NEXT_PUBLIC_API_URL=/api`; FastAPI
-uses `settings.ROOT_PATH` (`""` local, `/api` prod).
-
-Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
-`NEXT_PUBLIC_API_URL=/api`, `FRONTEND_ORIGIN`, `ROOT_PATH=/api`.
+## Same-origin deploy
+Auth cookie is `SameSite=Lax` and the FE fetches with `credentials:"include"`,
+so FE and BE **must share one origin**. Prod env: `DATABASE_URL` (:6543),
+`JWT_SECRET`, `COOKIE_SECURE=true`, `NEXT_PUBLIC_API_URL=/api`,
+`FRONTEND_ORIGIN`, `ROOT_PATH=/api` (FastAPI reads `settings.ROOT_PATH`:
+`""` local, `/api` prod).
 
 ## Frontend architecture
-- `components/EventsView.tsx` (~1.3k lines) is the member experience — the whole
-  one-card-at-a-time discovery/attend flow lives here and orchestrates every
-  accessibility mode below.
-- **Accessibility modes are per-member toggles**, persisted on the user (`Me.tts_enabled`,
-  `voice_commands_enabled`, `eye_tracking_enabled`) and loaded from `GET /auth/me`.
-  Each is a hook in `lib/`: `useTextToSpeech`, `useSpeechCommands`,
-  `useEyeTracking` (webgazer-based gaze cursor + `CalibrationOverlay`), `useHold`
-  (press-and-hold-to-attend). Toggling a mode PATCHes `/users/me` and flips the
-  hook — keep the persisted pref and the active hook in sync.
-- All HTTP goes through the single `api()` helper in `lib/api.ts`
-  (`credentials: "include"` for the auth cookie). Image uploads use raw `FormData`
-  via `uploadImage()` — never force `Content-Type: application/json` on those.
+- `components/EventsView.tsx` (~1.3k lines) is the whole member experience and
+  orchestrates every accessibility mode.
+- Accessibility modes are per-member toggles persisted on the user
+  (`tts_enabled`, `voice_commands_enabled`, `eye_tracking_enabled`; loaded from
+  `GET /users/me`), each backed by a hook in `lib/`: `useTextToSpeech`,
+  `useSpeechCommands`, `useHeadTracking`, `useHold`. Toggling PATCHes
+  `/users/me` — keep the persisted pref and the active hook in sync.
+- All HTTP goes through `api()` in `lib/api.ts` (`credentials:"include"`).
+  Image uploads use `uploadImage()` with raw `FormData` — never force
+  `Content-Type: application/json` on those.
 
-## Gotchas / conventions
-- **Passwords use `bcrypt` directly — do NOT reintroduce `passlib`** (crashes on
+## Gotchas
+- Passwords use `bcrypt` directly — do NOT reintroduce `passlib` (crashes on
   bcrypt ≥4.1). Hashes are standard `$2b$`.
-- **The 3-icon set is the credential** → generate with `secrets` (see
-  `app/core/icons.py`), never `random`. Keyspace is only ~12k combos; add login
-  rate-limiting before treating this as production auth.
-- `JWT_SECRET` has no default — the app fails fast if it's unset.
-- DB engine uses `NullPool` + `prepare_threshold=None` for pgbouncer compatibility.
-- Roles: **members** (icon sign-in) · **hosts** (manage own programs) · **admins**
+- Name + ordered 3-icon set is the credential (`POST /auth/user`,
+  login-or-signup; uniqueness on `(username, icons)`). Legacy random icon
+  allocation must use `secrets` (`app/core/icons.py`), never `random`. Keyspace
+  is 40·39·38 ≈ 59k combos; add login rate-limiting before treating this as
+  production auth.
+- `JWT_SECRET` has no default — the app fails fast if unset.
+- Roles: **members** (icon sign-in) · **hosts** (own programs) · **admins**
   (hosts with `is_admin`).
 
 ## Status
-DB live + seeded. Deploy config present but **not yet deployed/verified**; the root
-`vercel.json` `services` schema needs validation against current Vercel support, and
-`vercel login` must be completed first.
+DB live + seeded. Deploy config present but **not yet deployed/verified** — the
+root `vercel.json` `services` schema needs validation and `vercel login` is
+pending. `users.accessibility_prefs` / `interest_categories` exist end-to-end
+in the backend but no frontend UI sets or reads them yet (planned onboarding
+wizard + feed personalization were never built).
