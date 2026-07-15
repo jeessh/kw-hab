@@ -16,9 +16,23 @@ export default function EventsPage() {
     p.catch(() => {});
     return p;
   });
+  // Same pattern for the member's already-attended events, so saved state
+  // survives a reload.
+  const [attendedPromise] = useState<Promise<Event[]>>(() => {
+    if (typeof window === "undefined") return Promise.resolve([]);
+    const p = api<Event[]>("/users/me/events");
+    p.catch(() => {});
+    return p;
+  });
   return (
     <AuthGate>
-      {(me) => <EventsView initialMe={me} eventsPromise={eventsPromise} />}
+      {(me) => (
+        <EventsView
+          initialMe={me}
+          eventsPromise={eventsPromise}
+          attendedPromise={attendedPromise}
+        />
+      )}
     </AuthGate>
   );
 }

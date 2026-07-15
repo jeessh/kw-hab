@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 /**
  * Press-and-hold progress driver. `start` animates 0→1 over `duration` ms via
@@ -40,5 +40,9 @@ export function useHold() {
     [],
   );
 
-  return { start, cancel, holding: () => raf.current !== null };
+  // Stable object so consumers can safely list the hook result in deps.
+  return useMemo(
+    () => ({ start, cancel, holding: () => raf.current !== null }),
+    [start, cancel],
+  );
 }

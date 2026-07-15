@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { api, type Event, type Me } from "@/lib/api";
 import { categoryStyle } from "@/lib/categories";
 
@@ -44,7 +44,11 @@ type Props = {
   onClose: () => void;
 };
 
-export function SavedEvents({ me, reveal, onClose }: Props) {
+export const SavedEvents = memo(function SavedEvents({
+  me,
+  reveal,
+  onClose,
+}: Props) {
   const open = reveal > 0;
   const [events, setEvents] = useState<Event[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -135,7 +139,7 @@ export function SavedEvents({ me, reveal, onClose }: Props) {
       </div>
     </div>
   );
-}
+});
 
 /* ---------------- sections & cards ---------------- */
 

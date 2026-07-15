@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -33,7 +34,6 @@ import { useHeadTracking } from "@/lib/useHeadTracking";
 import { HeadCursor } from "@/components/HeadCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
-import { Modal } from "@/components/Modal";
 import { SavedEvents } from "@/components/SavedEvents";
 
 const DROP_THRESHOLD = 150; // drag-down px to save
@@ -84,9 +84,11 @@ function fullDate(iso?: string | null): string {
 export function EventsView({
   initialMe,
   eventsPromise,
+  attendedPromise,
 }: {
   initialMe: Me;
   eventsPromise: Promise<Event[]>;
+  attendedPromise: Promise<Event[]>;
 }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
@@ -114,7 +116,6 @@ export function EventsView({
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
-  const [savedOpen, setSavedOpen] = useState(false);
 
   const [saveReveal, setSaveReveal] = useState(0);
   const [settingsReveal, setSettingsReveal] = useState(0);
@@ -169,6 +170,27 @@ export function EventsView({
     };
   }, [eventsPromise]);
 
+  // Seed `saved` with the server's attended events so the card badge, count,
+  // and saved state survive a reload. Merge with anything saved this session;
+  // a failure is non-fatal (leave `saved` as-is).
+  useEffect(() => {
+    let alive = true;
+    attendedPromise
+      .catch(() => api<Event[]>("/users/me/events"))
+      .then((attended) => {
+        if (!alive) return;
+        setSaved((prevSaved) => {
+          const merged = new Set(prevSaved);
+          attended.forEach((ev) => merged.add(ev.id));
+          return merged;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [attendedPromise]);
+
   const current = events[i];
 
   // +1 = advancing (new card slides in from the right), -1 = going back.
@@ -207,20 +229,21 @@ export function EventsView({
     return [...first.entries()].map(([tag, index]) => ({ tag, index }));
   }, [events]);
 
-  const attend = useCallback(
-    async (ev: Event) => {
-      setSrMessage(`Saved ${ev.title}`);
-      if (!saved.has(ev.id)) {
-        setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
-        try {
-          await api(`/events/${ev.id}/attend`, { method: "POST" });
-        } catch {
-          /* keep the optimistic UI even if offline in the demo */
-        }
+  // Read `saved` through a ref so `attend` (and everything built on it) keeps
+  // a stable identity across saves.
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  const attend = useCallback(async (ev: Event) => {
+    setSrMessage(`Saved ${ev.title}`);
+    if (!savedRef.current.has(ev.id)) {
+      setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
+      try {
+        await api(`/events/${ev.id}/attend`, { method: "POST" });
+      } catch {
+        /* keep the optimistic UI even if offline in the demo */
       }
-    },
-    [saved],
-  );
+    }
+  }, []);
 
   const saveCurrent = useCallback(async () => {
     const ev = events[i];
@@ -438,6 +461,27 @@ export function EventsView({
     void animate(peekX, 0, { type: "spring", stiffness: 300, damping: 30 });
   }, [holdNav, peekX]);
 
+  // Stable per-side handlers so the memoized SideZones don't re-render on
+  // every state change. Hover-dwell also restarts on release of a press.
+  const hoverNavLeft = useCallback(
+    () => startNav("left", NAV_HOVER_MS),
+    [startNav],
+  );
+  const pressNavLeft = useCallback(() => {
+    navFiredRef.current = false;
+    startNav("left", NAV_PRESS_MS);
+  }, [startNav]);
+  const clickNavLeft = useCallback(() => clickNav("left"), [clickNav]);
+  const hoverNavRight = useCallback(
+    () => startNav("right", NAV_HOVER_MS),
+    [startNav],
+  );
+  const pressNavRight = useCallback(() => {
+    navFiredRef.current = false;
+    startNav("right", NAV_PRESS_MS);
+  }, [startNav]);
+  const clickNavRight = useCallback(() => clickNav("right"), [clickNav]);
+
   // ---- preferences (persist to profile) ----
   const setPref = useCallback(async (patch: MePrefs) => {
     if (patch.tts_enabled !== undefined) setTtsEnabled(patch.tts_enabled);
@@ -452,6 +496,19 @@ export function EventsView({
       /* keep optimistic state for the demo even if the write fails */
     }
   }, []);
+
+  const toggleTts = useCallback(
+    (v: boolean) => void setPref({ tts_enabled: v }),
+    [setPref],
+  );
+  const toggleVoice = useCallback(
+    (v: boolean) => void setPref({ voice_commands_enabled: v }),
+    [setPref],
+  );
+  const toggleHead = useCallback(
+    (v: boolean) => void setPref({ eye_tracking_enabled: v }),
+    [setPref],
+  );
 
   const doLogout = useCallback(async () => {
     try {
@@ -501,7 +558,7 @@ export function EventsView({
     headEnabled,
     actionHandlers,
     // Freeze dwell while a panel is open so looking around doesn't fire actions.
-    view === "settings" || a11yOpen || savedOpen,
+    view === "settings" || a11yOpen,
   );
 
   // ---- text-to-speech: read the current event when it changes ----
@@ -665,11 +722,11 @@ export function EventsView({
         voiceEnabled={voiceEnabled}
         ttsSupported={ttsSupported}
         voiceSupported={voiceSupported}
-        onToggleTts={(v) => void setPref({ tts_enabled: v })}
-        onToggleVoice={(v) => void setPref({ voice_commands_enabled: v })}
+        onToggleTts={toggleTts}
+        onToggleVoice={toggleVoice}
         headEnabled={headEnabled}
         headSupported={headSupported}
-        onToggleHead={(v) => void setPref({ eye_tracking_enabled: v })}
+        onToggleHead={toggleHead}
         listening={voiceEnabled && listening}
       />
 
@@ -712,13 +769,10 @@ export function EventsView({
                 progress={peekSide === "left" ? navProgress : 0}
                 active={peekSide === "left"}
                 disabled={flying}
-                onEnter={() => startNav("left", NAV_HOVER_MS)}
-                onDown={() => {
-                  navFiredRef.current = false;
-                  startNav("left", NAV_PRESS_MS);
-                }}
-                onUp={() => startNav("left", NAV_HOVER_MS)}
-                onClick={() => clickNav("left")}
+                onEnter={hoverNavLeft}
+                onDown={pressNavLeft}
+                onUp={hoverNavLeft}
+                onClick={clickNavLeft}
                 onLeave={resetNav}
               />
               <SideZone
@@ -726,13 +780,10 @@ export function EventsView({
                 progress={peekSide === "right" ? navProgress : 0}
                 active={peekSide === "right"}
                 disabled={flying}
-                onEnter={() => startNav("right", NAV_HOVER_MS)}
-                onDown={() => {
-                  navFiredRef.current = false;
-                  startNav("right", NAV_PRESS_MS);
-                }}
-                onUp={() => startNav("right", NAV_HOVER_MS)}
-                onClick={() => clickNav("right")}
+                onEnter={hoverNavRight}
+                onDown={pressNavRight}
+                onUp={hoverNavRight}
+                onClick={clickNavRight}
                 onLeave={resetNav}
               />
 
@@ -818,12 +869,16 @@ export function EventsView({
         )}
 
         {/* drop zone: drag + hold-to-save target */}
-        <DropZone ref={dropRef} active={saveReveal > 0 || dropPulse} />
+        <DropZone
+          ref={dropRef}
+          active={saveReveal > 0 || dropPulse}
+          onSave={dragToAttend}
+        />
       </div>
 
       {/* saved events */}
       <button
-        onClick={() => setSavedOpen(true)}
+        onClick={openSettings}
         className="absolute bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-xl border-2 border-edge bg-white px-4 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-[1.02]"
       >
         Saved events
@@ -834,21 +889,19 @@ export function EventsView({
           </span>
         )}
       </button>
-
-      {savedOpen && (
-        <SavedEventsModal
-          events={events}
-          savedIds={saved}
-          onClose={() => setSavedOpen(false)}
-        />
-      )}
     </motion.main>
   );
 }
 
 /* ---------------- card ---------------- */
 
-function EventCard({ event, saved }: { event: Event; saved: boolean }) {
+const EventCard = memo(function EventCard({
+  event,
+  saved,
+}: {
+  event: Event;
+  saved: boolean;
+}) {
   const headerColor = tagStyle(event.category || "General").color;
   return (
     <div className="flex h-full flex-col">
@@ -902,7 +955,7 @@ function EventCard({ event, saved }: { event: Event; saved: boolean }) {
       </div>
     </div>
   );
-}
+});
 
 function BrailleHandle() {
   return (
@@ -927,7 +980,7 @@ function CardSkeleton({ event }: { event: Event }) {
   );
 }
 
-function NeighborCard({
+const NeighborCard = memo(function NeighborCard({
   event,
   offset,
 }: {
@@ -960,11 +1013,11 @@ function NeighborCard({
       </motion.div>
     </div>
   );
-}
+});
 
 /* ---------------- stepper ---------------- */
 
-function TagStepper({
+const TagStepper = memo(function TagStepper({
   tags,
   activeTag,
   onJump,
@@ -1018,36 +1071,46 @@ function TagStepper({
       </div>
     </div>
   );
-}
+});
 
 /* ---------------- drop zone ---------------- */
 
-const DropZone = forwardRef<HTMLDivElement, { active: boolean }>(
-  function DropZone({ active }, ref) {
-    return (
-      <div
-        ref={ref}
-        aria-hidden
-        className="absolute bottom-6 left-1/2 flex h-32 w-[min(90vw,520px)] -translate-x-1/2 flex-col items-center justify-center gap-1 rounded-3xl border-2 border-dashed transition-colors"
-        style={{
-          borderColor: active ? BERRY : "#C9B8D6",
-          background: active ? "rgba(232,49,138,0.10)" : "rgba(232,49,138,0.04)",
-        }}
-      >
-        <span className="text-2xl" style={{ color: BERRY }}>
-          ↓
-        </span>
-        <span className="font-display text-lg font-semibold text-ink">
-          Drag here to save
-        </span>
-      </div>
-    );
-  },
+// Container keeps the ref (fly-target geometry); the button inside gives
+// keyboard and screen-reader users the same save action as drag/hold.
+const DropZone = memo(
+  forwardRef<HTMLDivElement, { active: boolean; onSave: () => void }>(
+    function DropZone({ active, onSave }, ref) {
+      return (
+        <div
+          ref={ref}
+          className="absolute bottom-6 left-1/2 flex h-32 w-[min(90vw,520px)] -translate-x-1/2 items-center justify-center rounded-3xl border-2 border-dashed transition-colors"
+          style={{
+            borderColor: active ? BERRY : "#C9B8D6",
+            background: active ? "rgba(232,49,138,0.10)" : "rgba(232,49,138,0.04)",
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Save this event"
+            onClick={onSave}
+            className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-3xl"
+          >
+            <span className="text-2xl" style={{ color: BERRY }} aria-hidden>
+              ↓
+            </span>
+            <span className="font-display text-lg font-semibold text-ink">
+              Drag here to save
+            </span>
+          </button>
+        </div>
+      );
+    },
+  ),
 );
 
 /* ---------------- accessibility menu ---------------- */
 
-function AccessibilityMenu({
+const AccessibilityMenu = memo(function AccessibilityMenu({
   open,
   onOpenChange,
   ttsEnabled,
@@ -1140,7 +1203,7 @@ function AccessibilityMenu({
       )}
     </div>
   );
-}
+});
 
 function MenuToggle({
   label,
@@ -1182,64 +1245,6 @@ function MenuToggle({
         />
       </button>
     </div>
-  );
-}
-
-/* ---------------- saved events modal ---------------- */
-
-function SavedEventsModal({
-  events,
-  savedIds,
-  onClose,
-}: {
-  events: Event[];
-  savedIds: Set<string>;
-  onClose: () => void;
-}) {
-  const list = events.filter((e) => savedIds.has(e.id));
-  return (
-    <Modal title="Saved events" onClose={onClose}>
-      {list.length === 0 ? (
-        <p className="mt-3 text-lg text-muted">
-          No saved events yet. Drag a card down to save it.
-        </p>
-      ) : (
-        <ul className="mt-4 flex flex-col gap-3">
-          {list.map((e) => (
-            <li
-              key={e.id}
-              className="flex items-center gap-4 rounded-2xl border-2 border-edge p-3"
-            >
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-edge">
-                {e.cover_image_url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={e.cover_image_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-ink">{e.title}</p>
-                <p className="text-sm text-muted">
-                  {fullDate(e.starts_at) || "Date to be announced"}
-                  {e.location ? ` · ${e.location}` : ""}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-6 flex justify-end">
-        <button
-          onClick={onClose}
-          className="rounded-xl bg-accent px-6 py-3 font-semibold text-white"
-        >
-          Done
-        </button>
-      </div>
-    </Modal>
   );
 }
 
@@ -1308,8 +1313,10 @@ function ConfirmSweep() {
 /* ---------------- side nav ---------------- */
 
 // Whole-flank target: click to move immediately, or hover/press to build a
-// dwell that slides the carousel and repeats while the pointer stays.
-function SideZone({
+// dwell that slides the carousel and repeats while the pointer stays. The
+// arrow circle is a real button so keyboard and screen-reader users can
+// navigate; the rest of the zone stays decorative.
+const SideZone = memo(function SideZone({
   side,
   progress,
   active,
@@ -1333,7 +1340,6 @@ function SideZone({
   const isLeft = side === "left";
   return (
     <div
-      aria-hidden
       onPointerEnter={disabled ? undefined : onEnter}
       onPointerLeave={onLeave}
       onPointerDown={disabled ? undefined : onDown}
@@ -1349,16 +1355,27 @@ function SideZone({
         className="flex flex-col items-center gap-2 rounded-3xl px-4 py-6 transition-colors"
         style={{ background: active ? "rgba(232,49,138,0.08)" : "transparent" }}
       >
-        <div
+        <button
+          type="button"
+          aria-label={isLeft ? "Previous event" : "Next event"}
+          onClick={(e) => {
+            // Zone onClick handles pointer clicks; stop the bubble so a
+            // button click (mouse or keyboard) doesn't navigate twice.
+            e.stopPropagation();
+            if (!disabled) onClick();
+          }}
           className="grid h-16 w-16 place-items-center rounded-full border-2 border-edge bg-white text-3xl text-ink shadow-card transition-transform"
           style={{ transform: active ? "scale(1.08)" : "none" }}
         >
           <span aria-hidden>{isLeft ? "←" : "→"}</span>
-        </div>
-        <span className="font-display text-lg font-semibold text-ink">
+        </button>
+        <span
+          className="font-display text-lg font-semibold text-ink"
+          aria-hidden
+        >
           {isLeft ? "Back" : "Next"}
         </span>
-        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-edge/70">
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-edge/70" aria-hidden>
           <div
             className="h-full rounded-full transition-[width] duration-75"
             style={{ width: `${Math.round(progress * 100)}%`, background: BERRY }}
@@ -1367,7 +1384,7 @@ function SideZone({
       </div>
     </div>
   );
-}
+});
 
 /* ---------------- settings morph ---------------- */
 
