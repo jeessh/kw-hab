@@ -40,5 +40,7 @@ class HostSignup(BaseModel):
 
 
 class HostLogin(BaseModel):
-    email: EmailStr
+    # Plain str on login: it's a lookup key, and validating here could lock out
+    # accounts created before EmailStr was enforced on signup.
+    email: str
     password: str

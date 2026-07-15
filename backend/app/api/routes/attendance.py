@@ -27,11 +27,14 @@ def attend_event(
     db.add(Attendance(user_id=user.id, event_id=event_id))
     try:
         db.commit()
-    except IntegrityError:
-        # Lost a race with a concurrent attend (double-tap / retry): same
-        # outcome as the pre-check, so stay idempotent instead of 500ing.
+    except IntegrityError as exc:
         db.rollback()
-        return {"ok": True, "already": True}
+        # Unique violation (23505) = lost a race with a concurrent attend:
+        # same outcome as the pre-check, stay idempotent. An FK violation
+        # means the event was deleted mid-request: no attendance exists.
+        if getattr(exc.orig, "sqlstate", None) == "23505":
+            return {"ok": True, "already": True}
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
     return {"ok": True}
 
 
