@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-const FOCUSABLE =
+export const FOCUSABLE =
   'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
 // Accessible dialog shell: focus trap, Esc/backdrop to close, focus restore.

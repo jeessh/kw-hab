@@ -276,6 +276,13 @@ export function EventsView({
     await animate(y, 0, { duration: 0.28, ease: "easeOut" });
     void saveCurrent();
   }, [events, i, flying, reduceMotion, y, saveCurrent]);
+  // Stable identity for the memoized DropZone (dragToAttend changes on every
+  // card navigation, which would defeat its memo).
+  const dragToAttendRef = useRef(dragToAttend);
+  dragToAttendRef.current = dragToAttend;
+  const saveFromButton = useCallback(() => {
+    void dragToAttendRef.current();
+  }, []);
 
   // Hold complete: pop the card, shrink it into the drop zone, attend, advance.
   const flyToDrop = useCallback(async () => {
@@ -872,23 +879,25 @@ export function EventsView({
         <DropZone
           ref={dropRef}
           active={saveReveal > 0 || dropPulse}
-          onSave={dragToAttend}
+          onSave={saveFromButton}
         />
       </div>
 
-      {/* saved events */}
-      <button
-        onClick={openSettings}
-        className="absolute bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-xl border-2 border-edge bg-white px-4 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-[1.02]"
-      >
-        Saved events
-        <BookmarkIcon />
-        {saved.size > 0 && (
-          <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1 text-sm text-white">
-            {saved.size}
-          </span>
-        )}
-      </button>
+      {/* saved events (hidden while the panel is open so it can't float on top) */}
+      {view !== "settings" && (
+        <button
+          onClick={openSettings}
+          className="absolute bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-xl border-2 border-edge bg-white px-4 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-[1.02]"
+        >
+          Saved events
+          <BookmarkIcon />
+          {saved.size > 0 && (
+            <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1 text-sm text-white">
+              {saved.size}
+            </span>
+          )}
+        </button>
+      )}
     </motion.main>
   );
 }
@@ -1358,6 +1367,7 @@ const SideZone = memo(function SideZone({
         <button
           type="button"
           aria-label={isLeft ? "Previous event" : "Next event"}
+          aria-disabled={disabled || undefined}
           onClick={(e) => {
             // Zone onClick handles pointer clicks; stop the bubble so a
             // button click (mouse or keyboard) doesn't navigate twice.
