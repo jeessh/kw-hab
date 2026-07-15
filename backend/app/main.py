@@ -22,7 +22,10 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     # Convenience for the hackathon; use Alembic migrations for anything real.
-    Base.metadata.create_all(bind=engine)
+    # Skipped when served under /api (serverless): create_all on every cold
+    # start adds catalog round trips through pgbouncer.
+    if not settings.ROOT_PATH:
+        Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")
