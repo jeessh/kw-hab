@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "copy-webgazer": "rm -rf public/mediapipe && cp -R node_modules/webgazer/dist/mediapipe public/mediapipe",
+    "copy-webgazer": "rm -rf public/mediapipe && mkdir -p public && cp -R node_modules/webgazer/dist/mediapipe public/mediapipe",
     "predev": "npm run copy-webgazer",
     "prebuild": "npm run copy-webgazer"
   },

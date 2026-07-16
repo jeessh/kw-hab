@@ -22,10 +22,9 @@ class Settings(BaseSettings):
     SUPABASE_IMAGE_BUCKET: str = "event-images"
 
     # Path prefix the backend is served under. Empty in local dev (the frontend
-    # calls http://localhost:8000 directly); set to "/api" in Vercel production,
-    # where the top-level rewrite routes /api/* to this service and forwards the
-    # original /api-prefixed path. FastAPI's root_path makes routes resolve
-    # correctly under that prefix and fixes the /docs + OpenAPI URLs.
+    # calls http://localhost:8000 directly); "/api" on Vercel, where the service
+    # rewrite forwards the /api-prefixed path and backend/index.py strips it
+    # before FastAPI matches. root_path here only fixes the /docs + OpenAPI URLs.
     ROOT_PATH: str = ""
 
 
