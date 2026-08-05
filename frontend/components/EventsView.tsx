@@ -198,9 +198,21 @@ export function EventsView({
   // The feed the member actually browses: their filters applied, then ordered
   // by how well each program matches their interests. Nothing is hidden by
   // personalization — best matches simply come first.
+  //
+  // Keyed on the two profile arrays rather than `me`: setPref rebuilds `me` on
+  // every preference write, so depending on the whole object would re-sort (and
+  // hand the memoized stepper a new array) every time someone toggled, say,
+  // text-to-speech — which has no bearing on order.
+  const interests = me?.interest_categories;
+  const accessPrefs = me?.accessibility_prefs;
   const feed = useMemo(
-    () => personalizedFeed(events, me, filters),
-    [events, me, filters],
+    () =>
+      personalizedFeed(
+        events,
+        { interests: interests ?? [], accessPrefs: accessPrefs ?? [] },
+        filters,
+      ),
+    [events, interests, accessPrefs, filters],
   );
 
   // Every hosting org in the unfiltered feed, so choosing one org doesn't
@@ -550,14 +562,27 @@ export function EventsView({
   // into `me`, which `feed` derives from) and persists via PATCH /users/me.
   // Reads through a ref so the handler keeps a stable identity for the memoized
   // menu, and so the toggle isn't a side effect inside a state updater.
+  //
+  // Re-scoring reorders the feed under the cursor, so `i` has to move with it.
+  // Left alone, the member would silently land on whichever unrelated program
+  // happened to fall at their old index — and the read-aloud voice would start
+  // describing it. Going to the top is the one predictable answer: they just
+  // said what they want to see first, so show them that, and say so.
   const toggleInterest = useCallback(
     (label: string) => {
       const chosen = meRef.current?.interest_categories ?? [];
+      const adding = !chosen.includes(label);
       void setPref({
-        interest_categories: chosen.includes(label)
-          ? chosen.filter((c) => c !== label)
-          : [...chosen, label],
+        interest_categories: adding
+          ? [...chosen, label]
+          : chosen.filter((c) => c !== label),
       });
+      setI(0);
+      setSrMessage(
+        adding
+          ? `Added ${label}. Showing your best matches from the start.`
+          : `Removed ${label}. Showing your best matches from the start.`,
+      );
     },
     [setPref],
   );
@@ -1383,7 +1408,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
                   type="button"
                   onClick={() => onToggleInterest(label)}
                   aria-pressed={chosen}
-                  className="inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3 py-2 text-sm font-semibold text-ink transition-transform hover:scale-[1.04]"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-transform hover:scale-[1.04]"
                   style={{ borderColor: chosen ? color : "#E2DEF0" }}
                 >
                   <span aria-hidden>{emoji}</span>
@@ -1392,6 +1417,11 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
               );
             })}
           </div>
+          <p className="sr-only" role="status" aria-live="polite">
+            {interests.length === 0
+              ? "Nothing chosen yet"
+              : `${interests.length} chosen: ${interests.join(", ")}`}
+          </p>
 
           <h2 className="mt-6 font-display text-lg font-bold text-ink">
             Accessibility

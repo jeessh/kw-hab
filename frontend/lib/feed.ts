@@ -1,4 +1,4 @@
-import type { Event, Me } from "@/lib/api";
+import type { Event } from "@/lib/api";
 import { sameCategory } from "@/lib/categories";
 
 // Weights for the personalized ordering. A topic the member picked outranks any
@@ -21,16 +21,26 @@ export const filtersActive = (f: FeedFilters) =>
   f.cost !== "all" || f.org !== "all";
 
 /**
+ * The two profile fields that affect ordering. Taken as plain arrays rather
+ * than the whole `Me` so callers can memoize on exactly what matters — patching
+ * an unrelated preference (say, text-to-speech) hands back a new `Me` object
+ * but the same arrays, and must not invalidate the feed.
+ */
+export type Taste = {
+  interests: string[];
+  accessPrefs: string[];
+};
+
+/**
  * How well one event matches this member. Higher sorts earlier; 0 means "no
  * signal", never "hide it".
  */
-export function matchScore(event: Event, me: Me | null): number {
-  if (!me) return 0;
+export function matchScore(event: Event, taste: Taste): number {
   let score = 0;
-  if (me.interest_categories.some((c) => sameCategory(c, event.category))) {
+  if (taste.interests.some((c) => sameCategory(c, event.category))) {
     score += TOPIC_WEIGHT;
   }
-  for (const pref of me.accessibility_prefs) {
+  for (const pref of taste.accessPrefs) {
     if (event.accessibility_tags.includes(pref)) score += ACCESS_WEIGHT;
   }
   return score;
@@ -47,7 +57,7 @@ export function matchScore(event: Event, me: Me | null): number {
  */
 export function personalizedFeed(
   events: Event[],
-  me: Me | null,
+  taste: Taste,
   filters: FeedFilters = NO_FILTERS,
 ): Event[] {
   const visible = events.filter((ev) => {
@@ -58,7 +68,7 @@ export function personalizedFeed(
   });
 
   return visible
-    .map((event, index) => ({ event, index, score: matchScore(event, me) }))
+    .map((event, index) => ({ event, index, score: matchScore(event, taste) }))
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.event);
 }
