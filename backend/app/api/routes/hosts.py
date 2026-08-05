@@ -91,7 +91,12 @@ def update_host(
     if not host:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin not found")
 
-    fields = body.model_dump(exclude_unset=True)
+    # Every field is optional, and an explicit null means "leave it alone" just
+    # like omitting it — dropping them here keeps `is_admin: null` from being
+    # written to a NOT NULL column further down.
+    fields = {
+        k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None
+    }
 
     if "is_admin" in fields and fields["is_admin"] != host.is_admin:
         # Dropping your own superadmin rights locks you out of this very page,
@@ -111,12 +116,9 @@ def update_host(
                 "This is the last superadmin — promote someone else first.",
             )
 
-    if "password" in fields and fields["password"]:
-        host.password_hash = hash_password(fields.pop("password"))
-    else:
-        fields.pop("password", None)
-
-    if "name" in fields and fields["name"]:
+    if fields.get("password"):
+        host.password_hash = hash_password(fields["password"])
+    if fields.get("name"):
         host.name = fields["name"].strip()
     if "is_admin" in fields:
         host.is_admin = fields["is_admin"]
