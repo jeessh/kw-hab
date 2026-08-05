@@ -41,10 +41,24 @@ Interactive docs: http://localhost:8000/docs
 ## Key endpoints
 - `POST /auth/signup/user` `{first_name, last_name, custom_password?}` → returns the icons, sets cookie
 - `POST /auth/login/user` `{username, password}`
-- `POST /auth/signup/host` · `POST /auth/login/host` · `POST /auth/logout` · `GET /auth/me`
+- `POST /auth/login/host` · `POST /auth/logout` · `GET /auth/me`
+  (no host signup route — superadmins create organizer accounts via `POST /hosts`)
 - `GET /events?category=&tag=&free=&q=` (public) · `POST /events` (host) · `PATCH/DELETE /events/{id}` (owner/admin)
 - `POST/DELETE /events/{id}/attend` (user) · `GET /users/me/events`
-- `GET /users` · `PATCH /users/{id}` · `DELETE /users/{id}` (admin)
+- `GET /users` · `PATCH /users/{id}` · `DELETE /users/{id}` (superadmin)
+- `GET /hosts` · `POST /hosts` · `PATCH /hosts/{id}` · `DELETE /hosts/{id}` (superadmin)
+
+## Admin tiers
+Both live on `hosts`; there is no third table or column.
+- **admin** (`is_admin = false`) — creates and manages only its own programs.
+- **superadmin** (`is_admin = true`) — manages any program, plus member accounts
+  and other admins.
+
+Removing an admin **reassigns their programs to the acting superadmin** rather
+than deleting them (`hosts.events` cascades, and members may already have saved
+those programs). A superadmin cannot demote or delete themselves, which is what
+keeps at least one superadmin in the system — you can only ever remove someone
+else's rights, so your own survive.
 
 ## Auth cookie
 `httpOnly` + `SameSite=Lax`. Callers send `credentials: "include"`; keep the API

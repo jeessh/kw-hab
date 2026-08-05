@@ -3,32 +3,60 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApiError, api, logout, type Event } from "@/lib/api";
+import { ApiError, api, type Event, type Session } from "@/lib/api";
 import { whenLabel } from "@/lib/time";
+import { AdminShell } from "@/components/AdminShell";
+import {
+  Button,
+  EmptyRow,
+  Pill,
+  TableCard,
+  inputClass,
+} from "@/components/AdminTable";
 import { EditEventModal } from "@/components/EditEventModal";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 
-type View = "list" | "card";
 type Cost = "all" | "free" | "paid";
+type Owner = "all" | "mine";
 
-export default function HostDashboardPage() {
+export default function ProgramsPage() {
+  return (
+    <AdminShell
+      title="Programs"
+      description="Everything published to the member feed."
+      actions={
+        <Link
+          href="/host/events/new"
+          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent/90"
+        >
+          Add program
+        </Link>
+      }
+    >
+      {(session) => <ProgramsTable session={session} />}
+    </AdminShell>
+  );
+}
+
+function ProgramsTable({ session }: { session: Session }) {
   const router = useRouter();
   const [events, setEvents] = useState<Event[]>([]);
-  const [myId, setMyId] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const [view, setView] = useState<View>("list");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [cost, setCost] = useState<Cost>("all");
+  const [owner, setOwner] = useState<Owner>("all");
 
   const [editing, setEditing] = useState<Event | null>(null);
   const [deleting, setDeleting] = useState<Event | null>(null);
 
-  // The feed is paginated (max 200/page); page through so the dashboard
-  // always has every event, not just the first page.
+  const isSuper = !!session.is_admin;
+  const myId = session.id ?? null;
+
+  // The feed is paginated (max 200/page); page through so the console always
+  // shows every program, not just the first page.
   async function fetchAllEvents(): Promise<Event[]> {
     const PAGE = 200;
     const all: Event[] = [];
@@ -40,27 +68,27 @@ export default function HostDashboardPage() {
   }
 
   async function load() {
-    const [me, evs] = await Promise.all([
-      api<{ is_admin: boolean; id: string }>("/auth/me"),
-      fetchAllEvents(),
-    ]);
-    setIsAdmin(me.is_admin);
-    setMyId(me.id);
-    setEvents(evs);
-    setLoading(false);
+    setLoading(true);
+    try {
+      setEvents(await fetchAllEvents());
+      setLoadError(false);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace("/host");
+        return;
+      }
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-    load().catch((e) => {
-      if (e instanceof ApiError && e.status === 401) router.replace("/host");
-      else {
-        setLoadError(true);
-        setLoading(false);
-      }
-    });
-  }, [router]);
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const canManage = (ev: Event) => isAdmin || ev.host_id === myId;
+  const canManage = (ev: Event) => isSuper || ev.host_id === myId;
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -74,6 +102,7 @@ export default function HostDashboardPage() {
       if (category !== "all" && ev.category !== category) return false;
       if (cost === "free" && !ev.is_free) return false;
       if (cost === "paid" && ev.is_free) return false;
+      if (owner === "mine" && ev.host_id !== myId) return false;
       if (q) {
         const haystack = [ev.title, ev.description, ev.location, ev.host_name]
           .filter(Boolean)
@@ -83,59 +112,61 @@ export default function HostDashboardPage() {
       }
       return true;
     });
-  }, [events, search, category, cost]);
-
-  async function doLogout() {
-    try {
-      await logout();
-    } catch {
-      /* clear the session client-side regardless */
-    }
-    router.replace("/host");
-  }
+  }, [events, search, category, cost, owner, myId]);
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-extrabold text-ink">
-            Programs dashboard
-          </h1>
-          <p className="mt-1 text-muted">
-            {isAdmin
-              ? "As an admin, you can edit or remove any program."
-              : "Manage the programs your organization runs."}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/host/events/new"
-            className="rounded-xl bg-accent px-5 py-3 font-semibold text-white transition-transform hover:scale-[1.02] focus-visible:scale-[1.02]"
+    <>
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-3">
+        <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+          <label
+            htmlFor="p-search"
+            className="text-xs font-semibold uppercase tracking-wide text-slate-500"
           >
-            + Add program
-          </Link>
-          <button
-            onClick={doLogout}
-            className="rounded-xl border-2 border-edge px-5 py-3 font-semibold text-muted transition-colors hover:border-pop hover:text-pop"
-          >
-            Log out
-          </button>
+            Search
+          </label>
+          <input
+            id="p-search"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Title, place, organization…"
+            className={inputClass}
+          />
         </div>
-      </header>
+        <Select
+          id="p-category"
+          label="Category"
+          value={category}
+          onChange={setCategory}
+          options={[
+            { value: "all", label: "All categories" },
+            ...categories.map((c) => ({ value: c, label: c })),
+          ]}
+        />
+        <Select
+          id="p-cost"
+          label="Cost"
+          value={cost}
+          onChange={(v) => setCost(v as Cost)}
+          options={[
+            { value: "all", label: "Free & paid" },
+            { value: "free", label: "Free only" },
+            { value: "paid", label: "Paid only" },
+          ]}
+        />
+        <Select
+          id="p-owner"
+          label="Owner"
+          value={owner}
+          onChange={(v) => setOwner(v as Owner)}
+          options={[
+            { value: "all", label: "All organizations" },
+            { value: "mine", label: "Mine only" },
+          ]}
+        />
+      </div>
 
-      <Toolbar
-        view={view}
-        onView={setView}
-        search={search}
-        onSearch={setSearch}
-        category={category}
-        onCategory={setCategory}
-        categories={categories}
-        cost={cost}
-        onCost={setCost}
-      />
-
-      <p role="status" aria-live="polite" className="mt-4 text-sm text-muted">
+      <p role="status" aria-live="polite" className="mt-3 text-sm text-slate-600">
         {loading
           ? "Loading programs…"
           : `Showing ${filtered.length} of ${events.length} ${
@@ -144,37 +175,90 @@ export default function HostDashboardPage() {
       </p>
 
       {loadError ? (
-        <p role="alert" className="mt-10 font-semibold text-pop">
+        <p role="alert" className="mt-6 font-medium text-red-600">
           Couldn&apos;t load programs. Please refresh and try again.
         </p>
-      ) : loading ? (
-        <p className="mt-10 text-muted">Loading…</p>
-      ) : events.length === 0 ? (
-        <EmptyState
-          heading="No programs yet"
-          body="Add your first program to see it here."
-        />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          heading="No matches"
-          body="No programs match your filters. Try clearing the search or filters."
-        />
-      ) : view === "list" ? (
-        <ListView
-          events={filtered}
-          myId={myId}
-          canManage={canManage}
-          onEdit={setEditing}
-          onDelete={setDeleting}
-        />
       ) : (
-        <CardView
-          events={filtered}
-          myId={myId}
-          canManage={canManage}
-          onEdit={setEditing}
-          onDelete={setDeleting}
-        />
+        <div className="mt-3">
+          <TableCard
+            caption="Community programs, with owner and management actions."
+            head={[
+              "Program",
+              "When",
+              "Category",
+              "Organization",
+              "Cost",
+              "Actions",
+            ]}
+          >
+            {loading ? (
+              <EmptyRow colSpan={6} text="Loading…" />
+            ) : filtered.length === 0 ? (
+              <EmptyRow
+                colSpan={6}
+                text={
+                  events.length === 0
+                    ? "No programs yet. Add your first one."
+                    : "No programs match these filters."
+                }
+              />
+            ) : (
+              filtered.map((ev) => {
+                const mine = ev.host_id === myId;
+                return (
+                  <tr key={ev.id} className="align-top hover:bg-slate-50">
+                    <th
+                      scope="row"
+                      className="px-4 py-3 text-left font-semibold text-slate-900"
+                    >
+                      {ev.title}
+                      {ev.location && (
+                        <span className="block text-xs font-normal text-slate-500">
+                          {ev.location}
+                        </span>
+                      )}
+                    </th>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                      {whenLabel(ev.starts_at) || "Date to be announced"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {ev.category || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {ev.host_name || "—"}
+                      {mine && (
+                        <span className="ml-2">
+                          <Pill tone="good">You</Pill>
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {ev.is_free ? (
+                        <Pill tone="good">Free</Pill>
+                      ) : (
+                        <Pill>Paid</Pill>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {canManage(ev) ? (
+                        <div className="flex gap-2">
+                          <Button onClick={() => setEditing(ev)}>
+                            Edit<span className="sr-only"> {ev.title}</span>
+                          </Button>
+                          <Button tone="danger" onClick={() => setDeleting(ev)}>
+                            Delete<span className="sr-only"> {ev.title}</span>
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">View only</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </TableCard>
+        </div>
       )}
 
       {editing && (
@@ -197,356 +281,43 @@ export default function HostDashboardPage() {
           }}
         />
       )}
-    </main>
+    </>
   );
 }
 
-/* ---------------- toolbar ---------------- */
-
-function Toolbar({
-  view,
-  onView,
-  search,
-  onSearch,
-  category,
-  onCategory,
-  categories,
-  cost,
-  onCost,
-}: {
-  view: View;
-  onView: (v: View) => void;
-  search: string;
-  onSearch: (v: string) => void;
-  category: string;
-  onCategory: (v: string) => void;
-  categories: string[];
-  cost: Cost;
-  onCost: (v: Cost) => void;
-}) {
-  return (
-    <div className="mt-6 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-card">
-      <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
-        <label htmlFor="dash-search" className="text-sm font-semibold text-muted">
-          Search
-        </label>
-        <input
-          id="dash-search"
-          type="search"
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-          placeholder="Title, place, organization…"
-          className="rounded-xl border-2 border-edge bg-white px-4 py-2.5 text-ink outline-none focus:border-accent"
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="dash-category"
-          className="text-sm font-semibold text-muted"
-        >
-          Category
-        </label>
-        <select
-          id="dash-category"
-          value={category}
-          onChange={(e) => onCategory(e.target.value)}
-          className="rounded-xl border-2 border-edge bg-white px-4 py-2.5 text-ink outline-none focus:border-accent"
-        >
-          <option value="all">All categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="dash-cost" className="text-sm font-semibold text-muted">
-          Cost
-        </label>
-        <select
-          id="dash-cost"
-          value={cost}
-          onChange={(e) => onCost(e.target.value as Cost)}
-          className="rounded-xl border-2 border-edge bg-white px-4 py-2.5 text-ink outline-none focus:border-accent"
-        >
-          <option value="all">Free &amp; paid</option>
-          <option value="free">Free only</option>
-          <option value="paid">Paid only</option>
-        </select>
-      </div>
-
-      <div
-        role="group"
-        aria-label="Choose how to view programs"
-        className="flex flex-col gap-1.5"
-      >
-        <span className="text-sm font-semibold text-muted">View</span>
-        <div className="flex rounded-xl border-2 border-edge p-1">
-          <ViewButton
-            active={view === "list"}
-            onClick={() => onView("list")}
-            label="List view"
-          >
-            List
-          </ViewButton>
-          <ViewButton
-            active={view === "card"}
-            onClick={() => onView("card")}
-            label="Card view"
-          >
-            Cards
-          </ViewButton>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ViewButton({
-  active,
-  onClick,
+function Select({
+  id,
   label,
-  children,
+  value,
+  onChange,
+  options,
 }: {
-  active: boolean;
-  onClick: () => void;
+  id: string;
   label: string;
-  children: React.ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      className={`rounded-lg px-4 py-1.5 font-semibold transition-colors ${
-        active ? "bg-accent text-white" : "text-muted hover:bg-paper"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* ---------------- shared bits ---------------- */
-
-function YouBadge() {
-  return (
-    <span className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
-      You
-    </span>
-  );
-}
-
-function CostPill({ free }: { free: boolean }) {
-  return free ? (
-    <span className="rounded-full bg-attend/15 px-2.5 py-0.5 text-sm font-semibold text-attend">
-      Free
-    </span>
-  ) : (
-    <span className="rounded-full bg-edge px-2.5 py-0.5 text-sm font-semibold text-ink">
-      Paid
-    </span>
-  );
-}
-
-function RowActions({
-  ev,
-  canManage,
-  onEdit,
-  onDelete,
-}: {
-  ev: Event;
-  canManage: boolean;
-  onEdit: (e: Event) => void;
-  onDelete: (e: Event) => void;
-}) {
-  if (!canManage) {
-    return <span className="text-sm text-muted">View only</span>;
-  }
-  return (
-    <div className="flex flex-wrap gap-2">
-      <button
-        onClick={() => onEdit(ev)}
-        className="rounded-lg border-2 border-accent px-3 py-1.5 text-sm font-semibold text-accent hover:bg-accent hover:text-white"
+    <div className="flex flex-col gap-1.5">
+      <label
+        htmlFor={id}
+        className="text-xs font-semibold uppercase tracking-wide text-slate-500"
       >
-        Edit
-        <span className="sr-only"> {ev.title}</span>
-      </button>
-      <button
-        onClick={() => onDelete(ev)}
-        className="rounded-lg border-2 border-pop px-3 py-1.5 text-sm font-semibold text-pop hover:bg-pop hover:text-white"
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputClass}
       >
-        Delete
-        <span className="sr-only"> {ev.title}</span>
-      </button>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </div>
-  );
-}
-
-function EmptyState({ heading, body }: { heading: string; body: string }) {
-  return (
-    <div className="mt-10 rounded-2xl bg-white p-10 text-center shadow-card">
-      <h2 className="font-display text-2xl font-bold text-ink">{heading}</h2>
-      <p className="mt-2 text-muted">{body}</p>
-    </div>
-  );
-}
-
-/* ---------------- list view ---------------- */
-
-function ListView({
-  events,
-  myId,
-  canManage,
-  onEdit,
-  onDelete,
-}: {
-  events: Event[];
-  myId: string | null;
-  canManage: (e: Event) => boolean;
-  onEdit: (e: Event) => void;
-  onDelete: (e: Event) => void;
-}) {
-  return (
-    <div className="mt-4 overflow-x-auto rounded-2xl bg-white shadow-card">
-      <table className="w-full border-collapse text-left">
-        <caption className="sr-only">
-          Community programs, with owner and management actions.
-        </caption>
-        <thead>
-          <tr className="border-b-2 border-edge text-sm text-muted">
-            <th scope="col" className="px-4 py-3 font-semibold">
-              Program
-            </th>
-            <th scope="col" className="px-4 py-3 font-semibold">
-              When
-            </th>
-            <th scope="col" className="px-4 py-3 font-semibold">
-              Category
-            </th>
-            <th scope="col" className="px-4 py-3 font-semibold">
-              Owner
-            </th>
-            <th scope="col" className="px-4 py-3 font-semibold">
-              Cost
-            </th>
-            <th scope="col" className="px-4 py-3 font-semibold">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((ev) => {
-            const mine = ev.host_id === myId;
-            return (
-              <tr
-                key={ev.id}
-                className="border-b border-edge align-top last:border-0"
-              >
-                <th scope="row" className="px-4 py-3 font-semibold text-ink">
-                  {ev.title}
-                  {ev.location && (
-                    <span className="block text-sm font-normal text-muted">
-                      {ev.location}
-                    </span>
-                  )}
-                </th>
-                <td className="px-4 py-3 text-muted">
-                  {whenLabel(ev.starts_at) || "Date to be announced"}
-                </td>
-                <td className="px-4 py-3 text-muted">{ev.category || "—"}</td>
-                <td className="px-4 py-3 text-ink">
-                  {ev.host_name || "—"}
-                  {mine && <YouBadge />}
-                </td>
-                <td className="px-4 py-3">
-                  <CostPill free={ev.is_free} />
-                </td>
-                <td className="px-4 py-3">
-                  <RowActions
-                    ev={ev}
-                    canManage={canManage(ev)}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ---------------- card view ---------------- */
-
-function CardView({
-  events,
-  myId,
-  canManage,
-  onEdit,
-  onDelete,
-}: {
-  events: Event[];
-  myId: string | null;
-  canManage: (e: Event) => boolean;
-  onEdit: (e: Event) => void;
-  onDelete: (e: Event) => void;
-}) {
-  return (
-    <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {events.map((ev) => {
-        const mine = ev.host_id === myId;
-        return (
-          <li
-            key={ev.id}
-            className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-card"
-          >
-            {ev.cover_image_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={ev.cover_image_url}
-                alt=""
-                className="h-32 w-full object-cover"
-              />
-            )}
-            <div className="flex flex-1 flex-col gap-2 p-5">
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="font-display text-xl font-bold text-ink">
-                  {ev.title}
-                </h2>
-                <CostPill free={ev.is_free} />
-              </div>
-              <p className="text-sm text-muted">
-                {whenLabel(ev.starts_at) || "Date to be announced"}
-                {ev.location ? ` · ${ev.location}` : ""}
-              </p>
-              <p className="text-sm text-ink">
-                {ev.category && (
-                  <span className="mr-2 rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-muted">
-                    {ev.category}
-                  </span>
-                )}
-                <span className="text-muted">{ev.host_name || "—"}</span>
-                {mine && <YouBadge />}
-              </p>
-              <div className="mt-auto pt-2">
-                <RowActions
-                  ev={ev}
-                  canManage={canManage(ev)}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                />
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
