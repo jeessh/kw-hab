@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { cloneElement, isValidElement, useId, type ReactNode } from "react";
 
 /**
  * Table primitives for the admin console. Plain wrappers over real table
@@ -102,7 +104,13 @@ export function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
   );
 }
 
-/** Labelled field wrapper used by the console's forms. */
+/**
+ * Labelled field wrapper used by the console's forms.
+ *
+ * The hint is wired to the control with aria-describedby, not just placed near
+ * it — "At least 8 characters" is useless to a screen-reader user if they only
+ * hear it after the form has already rejected them.
+ */
 export function Field({
   label,
   hint,
@@ -114,16 +122,26 @@ export function Field({
   htmlFor?: string;
   children: ReactNode;
 }) {
+  const hintId = useId();
+  const control =
+    hint && isValidElement(children)
+      ? cloneElement(
+          children as React.ReactElement<{ "aria-describedby"?: string }>,
+          { "aria-describedby": hintId },
+        )
+      : children;
+
   return (
     <div className="flex flex-col gap-1.5">
-      <label
-        htmlFor={htmlFor}
-        className="text-sm font-medium text-slate-700"
-      >
+      <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700">
         {label}
       </label>
-      {children}
-      {hint && <p className="text-xs text-slate-500">{hint}</p>}
+      {control}
+      {hint && (
+        <p id={hintId} className="text-xs text-slate-500">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

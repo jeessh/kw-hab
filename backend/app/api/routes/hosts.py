@@ -64,7 +64,7 @@ def create_host(
     if db.query(Host).filter(Host.email == email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
     host = Host(
-        name=body.name.strip(),
+        name=body.name,  # already trimmed and non-blank by the schema
         email=email,
         password_hash=hash_password(body.password),
         is_admin=body.is_admin,
@@ -119,7 +119,7 @@ def update_host(
     if fields.get("password"):
         host.password_hash = hash_password(fields["password"])
     if fields.get("name"):
-        host.name = fields["name"].strip()
+        host.name = fields["name"]  # already trimmed and non-blank by the schema
     if "is_admin" in fields:
         host.is_admin = fields["is_admin"]
 

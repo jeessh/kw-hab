@@ -73,6 +73,9 @@ function AdminsTable({ session }: { session: Session }) {
   async function setAccess(admin: AdminAccount, makeSuper: boolean) {
     setBusyId(admin.id);
     setError(null);
+    // Clear the previous action's message first, so the live region announces
+    // this action rather than sitting on a stale one.
+    setNotice("");
     try {
       await updateAdmin(admin.id, { is_admin: makeSuper });
       setNotice(
@@ -97,7 +100,13 @@ function AdminsTable({ session }: { session: Session }) {
             : notice ||
               `${admins.length} ${admins.length === 1 ? "account" : "accounts"}`}
         </p>
-        <Button tone="primary" onClick={() => setAdding(true)}>
+        <Button
+          tone="primary"
+          onClick={() => {
+            setNotice("");
+            setAdding(true);
+          }}
+        >
           Add admin
         </Button>
       </div>
@@ -171,7 +180,10 @@ function AdminsTable({ session }: { session: Session }) {
                           <Button
                             tone="danger"
                             disabled={busy}
-                            onClick={() => setRemoving(a)}
+                            onClick={() => {
+                              setNotice("");
+                              setRemoving(a);
+                            }}
                           >
                             Remove<span className="sr-only"> {a.name}</span>
                           </Button>
