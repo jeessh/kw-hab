@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ApiError, api } from "@/lib/api";
 import { ALL_ICONS, emojiFor } from "@/lib/icons";
+import { CATEGORIES } from "@/lib/categories";
 
-type Step = "name" | "icons" | "confirm" | "transition";
+type Step = "name" | "interests" | "icons" | "confirm" | "transition";
 
 const PICK_COUNT = 3;
 
@@ -16,12 +17,23 @@ export default function SignupPage() {
   const [step, setStep] = useState<Step>("name");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
+  // Topics this person wants to see first. Optional — an empty list just means
+  // the feed keeps its default order.
+  const [interests, setInterests] = useState<string[]>([]);
   // The tap order is the credential.
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Whether the submit logged into an existing account or created a new one.
   const [mode, setMode] = useState<"login" | "signup" | null>(null);
+
+  function toggleInterest(label: string) {
+    setInterests((prev) =>
+      prev.includes(label)
+        ? prev.filter((c) => c !== label)
+        : [...prev, label],
+    );
+  }
 
   function togglePick(slug: string) {
     setError(null);
@@ -37,13 +49,16 @@ export default function SignupPage() {
     setError(null);
     try {
       // One endpoint: logs in if this name + icon key already exists, else
-      // creates the account. `mode` tells us which happened.
+      // creates the account. `mode` tells us which happened. Interests are only
+      // read on the signup path, so a returning member's saved topics are never
+      // overwritten by whatever they tapped on the way through.
       const res = await api<{ mode: "login" | "signup" }>("/auth/user", {
         method: "POST",
         body: JSON.stringify({
           first_name: first,
           last_name: last,
           icons: picked,
+          interest_categories: interests,
         }),
       });
       setMode(res.mode);
@@ -102,7 +117,7 @@ export default function SignupPage() {
               disabled={!first.trim() || !last.trim()}
               onClick={() => {
                 setError(null);
-                setStep("icons");
+                setStep("interests");
               }}
               className="mt-8 w-full rounded-2xl bg-accent px-6 py-4 text-2xl font-semibold text-white shadow-card transition-transform enabled:hover:scale-[1.02] disabled:opacity-40"
             >
@@ -119,6 +134,75 @@ export default function SignupPage() {
                 Log in as host
               </Link>
             </p>
+          </motion.section>
+        )}
+
+        {/* ---------------- INTERESTS ---------------- */}
+        {step === "interests" && (
+          <motion.section
+            key="interests"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="w-full max-w-2xl text-center"
+          >
+            <h1 className="font-display text-4xl font-extrabold text-ink">
+              What do you like?
+            </h1>
+            <p className="mt-2 text-lg text-muted">
+              Pick as many as you want. We&apos;ll show these first. You can
+              change this later.
+            </p>
+
+            <div
+              role="group"
+              aria-label="Things you are interested in"
+              className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4"
+            >
+              {CATEGORIES.map(({ label, emoji, color }) => {
+                const chosen = interests.includes(label);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => toggleInterest(label)}
+                    aria-pressed={chosen}
+                    className={`flex min-h-[7rem] flex-col items-center justify-center gap-2 rounded-2xl border-[3px] bg-white p-4 shadow-card transition-transform hover:scale-[1.03] focus-visible:scale-[1.03] ${
+                      chosen ? "scale-[1.03]" : ""
+                    }`}
+                    style={{ borderColor: chosen ? color : "#E2DEF0" }}
+                  >
+                    <span className="text-4xl" aria-hidden>
+                      {emoji}
+                    </span>
+                    <span className="font-display text-lg font-bold text-ink">
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="sr-only" role="status" aria-live="polite">
+              {interests.length === 0
+                ? "Nothing chosen yet"
+                : `${interests.length} chosen: ${interests.join(", ")}`}
+            </p>
+
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <button
+                onClick={() => setStep("name")}
+                className="rounded-2xl px-6 py-4 text-lg font-semibold text-muted hover:bg-white"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setStep("icons")}
+                className="rounded-2xl bg-accent px-10 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
+              >
+                {interests.length ? "Continue" : "Skip for now"}
+              </button>
+            </div>
           </motion.section>
         )}
 
@@ -213,7 +297,7 @@ export default function SignupPage() {
 
             <div className="mt-8 flex items-center justify-center gap-3">
               <button
-                onClick={() => setStep("name")}
+                onClick={() => setStep("interests")}
                 className="rounded-2xl px-6 py-4 text-lg font-semibold text-muted hover:bg-white"
               >
                 Back

@@ -35,6 +35,18 @@ import { HeadCursor } from "@/components/HeadCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { SavedEvents } from "@/components/SavedEvents";
+import {
+  CATEGORIES,
+  FALLBACK_CATEGORY,
+  categoryStyle,
+} from "@/lib/categories";
+import {
+  NO_FILTERS,
+  filtersActive,
+  organizations,
+  personalizedFeed,
+  type FeedFilters,
+} from "@/lib/feed";
 
 const DROP_THRESHOLD = 150; // drag-down px to save
 const SETTINGS_THRESHOLD = 130; // drag-up px to open settings
@@ -51,21 +63,10 @@ const NEIGHBOR: Record<1 | 2, { x: number; scale: number; opacity: number; z: nu
   2: { x: 650, scale: 0.78, opacity: 0.22, z: 10 },
 };
 
-// Per-tag icon + colour for the topic stepper. Falls back for unknown tags.
-const TAG_STYLE: Record<string, { emoji: string; color: string }> = {
-  Food: { emoji: "🍌", color: "#E8318A" },
-  Cooking: { emoji: "🍳", color: "#E8318A" },
-  Hangout: { emoji: "☕", color: "#22C55E" },
-  Coffee: { emoji: "☕", color: "#22C55E" },
-  Sports: { emoji: "🏐", color: "#3B82F6" },
-  Games: { emoji: "🎮", color: "#3B82F6" },
-  Arts: { emoji: "🎨", color: "#F59E0B" },
-  Advice: { emoji: "🌱", color: "#2FA36B" },
-  Music: { emoji: "🎧", color: "#6366F1" },
-  General: { emoji: "🎟️", color: "#5B5BD6" },
-};
-const tagStyle = (tag: string) =>
-  TAG_STYLE[tag] ?? { emoji: "🎟️", color: "#5B5BD6" };
+// Topic icon + colour comes from the shared taxonomy in lib/categories, so the
+// stepper, the card header, the signup chips, and the host-side picker can't
+// drift apart.
+const tagStyle = categoryStyle;
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -101,6 +102,9 @@ export function EventsView({
   );
   const [view, setView] = useState<"events" | "settings">("events");
   const [confirming, setConfirming] = useState(false);
+  // Member-chosen filters. Personalization only ever reorders the feed; these
+  // are the one thing that removes cards, and only because the member asked.
+  const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
 
   const [holdProgress, setHoldProgress] = useState(0);
   const [flying, setFlying] = useState(false);
@@ -191,48 +195,85 @@ export function EventsView({
     };
   }, [attendedPromise]);
 
-  const current = events[i];
+  // The feed the member actually browses: their filters applied, then ordered
+  // by how well each program matches their interests. Nothing is hidden by
+  // personalization — best matches simply come first.
+  //
+  // Keyed on the two profile arrays rather than `me`: setPref rebuilds `me` on
+  // every preference write, so depending on the whole object would re-sort (and
+  // hand the memoized stepper a new array) every time someone toggled, say,
+  // text-to-speech — which has no bearing on order.
+  const interests = me?.interest_categories;
+  const accessPrefs = me?.accessibility_prefs;
+  const feed = useMemo(
+    () =>
+      personalizedFeed(
+        events,
+        { interests: interests ?? [], accessPrefs: accessPrefs ?? [] },
+        filters,
+      ),
+    [events, interests, accessPrefs, filters],
+  );
+
+  // Every hosting org in the unfiltered feed, so choosing one org doesn't
+  // collapse the menu you'd use to choose a different one.
+  const orgs = useMemo(() => organizations(events), [events]);
+
+  // A filter change can shorten the feed out from under the cursor.
+  useEffect(() => {
+    setI((n) => (n < feed.length ? n : 0));
+  }, [feed.length]);
+
+  const current = feed[i];
 
   // +1 = advancing (new card slides in from the right), -1 = going back.
   const [dir, setDir] = useState(1);
+  // Wrapping needs the live length, but next/prev must keep a stable identity
+  // (they feed the memoized side zones and the voice/head action handlers).
+  const feedLenRef = useRef(feed.length);
+  feedLenRef.current = feed.length;
   const next = useCallback(() => {
     setDir(1);
-    setEvents((ev) => (setI((n) => (n + 1) % Math.max(ev.length, 1)), ev));
+    setI((n) => (n + 1) % Math.max(feedLenRef.current, 1));
   }, []);
   const prev = useCallback(() => {
     setDir(-1);
-    setEvents(
-      (ev) => (setI((n) => (n - 1 + ev.length) % Math.max(ev.length, 1)), ev),
+    setI(
+      (n) =>
+        (n - 1 + feedLenRef.current) % Math.max(feedLenRef.current, 1),
     );
   }, []);
 
   // Non-wrapping window: the five cards always read left→right in order.
   const slotEvent = useCallback(
     (offset: number): Event | null => {
-      const len = events.length;
+      const len = feed.length;
       if (len === 0) return null;
       // 5+ events: wrap so every slot shows a real card; fewer: blanks at the ends.
-      if (len >= 5) return events[(((i + offset) % len) + len) % len];
+      if (len >= 5) return feed[(((i + offset) % len) + len) % len];
       const idx = i + offset;
-      return idx >= 0 && idx < len ? events[idx] : null;
+      return idx >= 0 && idx < len ? feed[idx] : null;
     },
-    [events, i],
+    [feed, i],
   );
 
   // Distinct topic tags in first-appearance order.
   const tags = useMemo(() => {
     const first = new Map<string, number>();
-    events.forEach((ev, idx) => {
-      const t = ev.category || "General";
+    feed.forEach((ev, idx) => {
+      const t = ev.category || FALLBACK_CATEGORY;
       if (!first.has(t)) first.set(t, idx);
     });
     return [...first.entries()].map(([tag, index]) => ({ tag, index }));
-  }, [events]);
+  }, [feed]);
 
   // Read `saved` through a ref so `attend` (and everything built on it) keeps
   // a stable identity across saves.
   const savedRef = useRef(saved);
   savedRef.current = saved;
+  // Latest profile, for handlers that must stay identity-stable.
+  const meRef = useRef(me);
+  meRef.current = me;
   const attend = useCallback(async (ev: Event) => {
     setSrMessage(`Saved ${ev.title}`);
     if (!savedRef.current.has(ev.id)) {
@@ -246,16 +287,16 @@ export function EventsView({
   }, []);
 
   const saveCurrent = useCallback(async () => {
-    const ev = events[i];
+    const ev = feed[i];
     if (!ev) return;
     setConfirming(true);
     void attend(ev);
     window.setTimeout(() => setConfirming(false), 1300);
-  }, [events, i, attend]);
+  }, [feed, i, attend]);
 
   // Voice "attend": ease the card into the slot (ramping the glow), then commit.
   const dragToAttend = useCallback(async () => {
-    const ev = events[i];
+    const ev = feed[i];
     if (!ev || flying) return;
     if (reduceMotion) {
       void saveCurrent();
@@ -275,7 +316,7 @@ export function EventsView({
     setSaveReveal(0);
     await animate(y, 0, { duration: 0.28, ease: "easeOut" });
     void saveCurrent();
-  }, [events, i, flying, reduceMotion, y, saveCurrent]);
+  }, [feed, i, flying, reduceMotion, y, saveCurrent]);
   // Stable identity for the memoized DropZone (dragToAttend changes on every
   // card navigation, which would defeat its memo).
   const dragToAttendRef = useRef(dragToAttend);
@@ -286,7 +327,7 @@ export function EventsView({
 
   // Hold complete: pop the card, shrink it into the drop zone, attend, advance.
   const flyToDrop = useCallback(async () => {
-    const ev = events[i];
+    const ev = feed[i];
     if (!ev || flying) return;
     setFlying(true);
 
@@ -330,7 +371,7 @@ export function EventsView({
     await animate(flyX, 0, { type: "spring", stiffness: 260, damping: 26 });
     setFlying(false);
   }, [
-    events,
+    feed,
     i,
     flying,
     reduceMotion,
@@ -517,6 +558,53 @@ export function EventsView({
     [setPref],
   );
 
+  // Adding or removing a topic re-scores the feed immediately (setPref merges
+  // into `me`, which `feed` derives from) and persists via PATCH /users/me.
+  // Reads through a ref so the handler keeps a stable identity for the memoized
+  // menu, and so the toggle isn't a side effect inside a state updater.
+  //
+  // Re-scoring reorders the feed under the cursor, so `i` has to move with it.
+  // Left alone, the member would silently land on whichever unrelated program
+  // happened to fall at their old index — and the read-aloud voice would start
+  // describing it. Going to the top is the one predictable answer: they just
+  // said what they want to see first, so show them that, and say so.
+  const toggleInterest = useCallback(
+    (label: string) => {
+      const chosen = meRef.current?.interest_categories ?? [];
+      const adding = !chosen.includes(label);
+      void setPref({
+        interest_categories: adding
+          ? [...chosen, label]
+          : chosen.filter((c) => c !== label),
+      });
+      setI(0);
+      setSrMessage(
+        adding
+          ? `Added ${label}. Showing your best matches from the start.`
+          : `Removed ${label}. Showing your best matches from the start.`,
+      );
+    },
+    [setPref],
+  );
+
+  // ---- filters (member-chosen; reset to the first card so the best match for
+  // the new choice is what they see) ----
+  const cycleCost = useCallback(() => {
+    setFilters((f) => ({
+      ...f,
+      cost: f.cost === "all" ? "free" : f.cost === "free" ? "paid" : "all",
+    }));
+    setI(0);
+  }, []);
+  const chooseOrg = useCallback((org: string) => {
+    setFilters((f) => ({ ...f, org }));
+    setI(0);
+  }, []);
+  const clearFilters = useCallback(() => {
+    setFilters(NO_FILTERS);
+    setI(0);
+  }, []);
+
   const doLogout = useCallback(async () => {
     try {
       await logout();
@@ -634,6 +722,9 @@ export function EventsView({
   }
 
   const alreadySaved = current ? saved.has(current.id) : false;
+  // "Nothing to show" has two very different causes, and telling someone there
+  // are no programs when they've just filtered them all out is a dead end.
+  const filteredOut = events.length > 0 && feed.length === 0;
   const empty = status === "empty" || !current;
 
   return (
@@ -735,6 +826,8 @@ export function EventsView({
         headSupported={headSupported}
         onToggleHead={toggleHead}
         listening={voiceEnabled && listening}
+        interests={me?.interest_categories ?? []}
+        onToggleInterest={toggleInterest}
       />
 
       {/* Saved Events panel (opens via the settings gesture) */}
@@ -748,24 +841,46 @@ export function EventsView({
           pointerEvents: view === "settings" ? "none" : "auto",
         }}
       >
+        {events.length > 0 && (
+          <FilterBar
+            filters={filters}
+            orgs={orgs}
+            shown={feed.length}
+            total={events.length}
+            onCycleCost={cycleCost}
+            onChooseOrg={chooseOrg}
+            onClear={clearFilters}
+          />
+        )}
+
         {empty ? (
-          <div className="flex flex-1 items-center">
+          <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
             <p className="font-display text-3xl text-muted">
-              No programs yet. Check back soon.
+              {filteredOut
+                ? "Nothing matches those choices."
+                : "No programs yet. Check back soon."}
             </p>
+            {filteredOut && (
+              <button
+                onClick={() => setFilters(NO_FILTERS)}
+                className="rounded-2xl bg-accent px-8 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
+              >
+                Show all programs
+              </button>
+            )}
           </div>
         ) : (
           <>
             {/* category header */}
             <p className="text-sm font-medium text-muted">Category:</p>
             <h1 className="font-display text-4xl font-extrabold text-ink">
-              {current.category || "General"}
+              {current.category || FALLBACK_CATEGORY}
             </h1>
 
             {/* tag stepper */}
             <TagStepper
               tags={tags}
-              activeTag={current.category || "General"}
+              activeTag={current.category || FALLBACK_CATEGORY}
               onJump={setI}
             />
 
@@ -1024,6 +1139,100 @@ const NeighborCard = memo(function NeighborCard({
   );
 });
 
+/* ---------------- filters ---------------- */
+
+const COST_LABEL: Record<FeedFilters["cost"], string> = {
+  all: "Free & paid",
+  free: "Free only",
+  paid: "Paid only",
+};
+// What one more tap will switch to — spoken in the button's accessible name so
+// the control explains itself without a legend.
+const COST_NEXT: Record<FeedFilters["cost"], string> = {
+  all: "free only",
+  free: "paid only",
+  paid: "free and paid",
+};
+
+// Two controls, each showing one choice at a time — deliberately not a filter
+// panel. Cost cycles (only three states); organizations use a native select so
+// a long list stays one tap and reads correctly to a screen reader.
+const FilterBar = memo(function FilterBar({
+  filters,
+  orgs,
+  shown,
+  total,
+  onCycleCost,
+  onChooseOrg,
+  onClear,
+}: {
+  filters: FeedFilters;
+  orgs: string[];
+  shown: number;
+  total: number;
+  onCycleCost: () => void;
+  onChooseOrg: (org: string) => void;
+  onClear: () => void;
+}) {
+  const active = filtersActive(filters);
+  return (
+    <div className="mb-1 flex w-full max-w-2xl flex-wrap items-center justify-center gap-2">
+      <button
+        type="button"
+        onClick={onCycleCost}
+        aria-label={`Cost: ${COST_LABEL[filters.cost]}. Activate to show ${
+          COST_NEXT[filters.cost]
+        }.`}
+        className={`rounded-full border-2 bg-white px-5 py-2.5 font-semibold shadow-card transition-transform hover:scale-[1.03] focus-visible:scale-[1.03] ${
+          filters.cost === "all"
+            ? "border-edge text-ink"
+            : "border-accent text-accent"
+        }`}
+      >
+        <span aria-hidden>💲 </span>
+        {COST_LABEL[filters.cost]}
+      </button>
+
+      <label className="sr-only" htmlFor="feed-org">
+        Show programs from
+      </label>
+      <select
+        id="feed-org"
+        value={filters.org}
+        onChange={(e) => onChooseOrg(e.target.value)}
+        className={`max-w-[16rem] truncate rounded-full border-2 bg-white px-5 py-2.5 font-semibold shadow-card outline-none ${
+          filters.org === "all"
+            ? "border-edge text-ink"
+            : "border-accent text-accent"
+        }`}
+      >
+        <option value="all">🏠 All organizations</option>
+        {orgs.map((org) => (
+          <option key={org} value={org}>
+            {org}
+          </option>
+        ))}
+      </select>
+
+      {active && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-full px-4 py-2.5 font-semibold text-muted underline underline-offset-2 hover:text-ink"
+        >
+          Show all
+        </button>
+      )}
+
+      <p className="sr-only" role="status" aria-live="polite">
+        {active
+          ? `Showing ${shown} of ${total} programs`
+          : `Showing all ${total} programs`}
+      </p>
+    </div>
+  );
+});
+
 /* ---------------- stepper ---------------- */
 
 const TagStepper = memo(function TagStepper({
@@ -1132,6 +1341,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   headSupported,
   onToggleHead,
   listening,
+  interests,
+  onToggleInterest,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -1145,6 +1356,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   headSupported: boolean;
   onToggleHead: (v: boolean) => void;
   listening: boolean;
+  interests: string[];
+  onToggleInterest: (label: string) => void;
 }) {
   return (
     <div className="absolute right-4 top-4 z-50">
@@ -1160,7 +1373,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label="Accessibility settings"
+        aria-label="Your settings: interests and accessibility"
         className="relative grid h-12 w-12 place-items-center rounded-full bg-white text-accent shadow-card transition-transform hover:scale-105"
       >
         <AccessibilityIcon />
@@ -1174,9 +1387,43 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 w-80 rounded-2xl bg-white p-4 shadow-lift"
+          className="absolute right-0 mt-2 max-h-[80vh] w-80 overflow-y-auto rounded-2xl bg-white p-4 shadow-lift"
         >
           <h2 className="font-display text-lg font-bold text-ink">
+            What you like
+          </h2>
+          <p className="mt-0.5 text-sm text-muted">
+            These come first in your programs.
+          </p>
+          <div
+            role="group"
+            aria-label="Things you are interested in"
+            className="mt-3 flex flex-wrap gap-2"
+          >
+            {CATEGORIES.map(({ label, emoji, color }) => {
+              const chosen = interests.includes(label);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => onToggleInterest(label)}
+                  aria-pressed={chosen}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-transform hover:scale-[1.04]"
+                  style={{ borderColor: chosen ? color : "#E2DEF0" }}
+                >
+                  <span aria-hidden>{emoji}</span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="sr-only" role="status" aria-live="polite">
+            {interests.length === 0
+              ? "Nothing chosen yet"
+              : `${interests.length} chosen: ${interests.join(", ")}`}
+          </p>
+
+          <h2 className="mt-6 font-display text-lg font-bold text-ink">
             Accessibility
           </h2>
           <p className="mt-0.5 text-sm text-muted">
