@@ -9,6 +9,24 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The human-readable part of a failed response.
+ *
+ * `ApiError.message` is the raw body, and FastAPI sends `{"detail": "..."}` —
+ * rendering that straight into the UI shows people JSON. Pull `detail` out when
+ * it's there, otherwise fall back to something we wrote.
+ */
+export function apiMessage(err: unknown, fallback: string): string {
+  if (!(err instanceof ApiError)) return fallback;
+  try {
+    const parsed = JSON.parse(err.message) as { detail?: unknown };
+    if (typeof parsed.detail === "string" && parsed.detail) return parsed.detail;
+  } catch {
+    /* not JSON — fall through */
+  }
+  return fallback;
+}
+
 export async function api<T = unknown>(
   path: string,
   opts: RequestInit = {},
@@ -86,3 +104,55 @@ export const updateMe = (body: MePrefs) =>
   api<Me>("/users/me", { method: "PATCH", body: JSON.stringify(body) });
 
 export const logout = () => api("/auth/logout", { method: "POST" });
+
+/* ---------------- admin console ---------------- */
+
+/** A member account, as the superadmin-only `GET /users` returns it. */
+export type MemberAccount = Me & { created_at?: string };
+
+/**
+ * An organizer account. Two tiers, both on this record:
+ *   • admin      (is_admin false) — manages only its own programs
+ *   • superadmin (is_admin true)  — manages any program, members, and admins
+ */
+export type AdminAccount = {
+  id: string;
+  name: string;
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+  /** Programs this account owns — shown before a removal reassigns them. */
+  event_count: number;
+};
+
+export type Session = {
+  authenticated: boolean;
+  role?: "user" | "host";
+  is_admin?: boolean;
+  id?: string;
+};
+
+export const getSession = () => api<Session>("/auth/me");
+
+export const listAdmins = () => api<AdminAccount[]>("/hosts");
+
+export const createAdmin = (body: {
+  name: string;
+  email: string;
+  password: string;
+  is_admin: boolean;
+}) => api<AdminAccount>("/hosts", { method: "POST", body: JSON.stringify(body) });
+
+export const updateAdmin = (
+  id: string,
+  body: { name?: string; is_admin?: boolean; password?: string },
+) =>
+  api<AdminAccount>(`/hosts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteAdmin = (id: string) =>
+  api(`/hosts/${id}`, { method: "DELETE" });
+
+export const listMembers = () => api<MemberAccount[]>("/users");

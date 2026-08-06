@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,7 +23,7 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.models.host import Host
 from app.models.user import User
-from app.schemas.auth import HostLogin, HostSignup, UserAuth, UserLogin, UserSignup
+from app.schemas.auth import HostLogin, UserAuth, UserLogin, UserSignup
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -171,28 +173,9 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
 # ---------- Hosts / admins (email + password) ----------
 
 
-@router.post("/signup/host", status_code=status.HTTP_201_CREATED)
-def signup_host(body: HostSignup, response: Response, db: Session = Depends(get_db)):
-    email = body.email.strip().lower()
-    if db.query(Host).filter(Host.email == email).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
-    host = Host(
-        name=body.name.strip(),
-        email=email,
-        password_hash=hash_password(body.password),
-    )
-    db.add(host)
-    try:
-        db.commit()
-    except IntegrityError:
-        # Race with a concurrent signup for the same email.
-        db.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
-    db.refresh(host)
-    set_auth_cookie(
-        response, create_access_token(host.id, "host", is_admin=host.is_admin)
-    )
-    return {"id": str(host.id), "email": host.email, "is_admin": host.is_admin}
+# There is deliberately no host signup route. Organizer accounts are created by
+# a superadmin via POST /hosts — self-serve registration would have let anyone
+# on the internet publish programs to the member feed.
 
 
 @router.post("/login/host")
@@ -221,9 +204,20 @@ def me(request: Request, db: Session = Depends(get_db)):
     payload = decode_token(token) if token else None
     if not payload:
         return {"authenticated": False}
+    role = payload.get("role")
+    is_admin = payload.get("is_admin", False)
+    if role == "host":
+        # Tokens last a week and carry whatever is_admin was true at login, so a
+        # demoted superadmin would keep seeing superadmin UI until it expired.
+        # The DB is the authority (require_admin already reads it) — read it here
+        # too so the UI matches what the API will actually allow.
+        host = db.get(Host, uuid.UUID(payload["sub"]))
+        if not host:
+            return {"authenticated": False}
+        is_admin = host.is_admin
     return {
         "authenticated": True,
-        "role": payload.get("role"),
-        "is_admin": payload.get("is_admin", False),
+        "role": role,
+        "is_admin": is_admin,
         "id": payload.get("sub"),
     }

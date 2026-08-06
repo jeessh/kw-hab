@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 class UserSignup(BaseModel):
@@ -31,12 +31,6 @@ class UserLogin(BaseModel):
     username: str
     # Either the icon password ("tree_cat_apple") or the custom password.
     password: str
-
-
-class HostSignup(BaseModel):
-    name: str
-    email: EmailStr
-    password: str = Field(min_length=8)
 
 
 class HostLogin(BaseModel):
