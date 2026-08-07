@@ -59,5 +59,10 @@ Production env vars:
 
 ## Roles
 - **Members** — discover + attend programs (simple icon sign-in)
-- **Hosts** — nonprofit organizers who add and edit their own programs
-- **Admins** — hosts who can edit any program and manage member accounts
+- **Admins** — nonprofit organizers who add and edit their own programs
+- **Superadmins** — admins who can also edit any program and manage member and
+  admin accounts
+
+Organizer accounts are created by a superadmin from the admin console; there is
+no self-serve host sign-up. Removing an admin hands their programs to the
+superadmin doing the removal rather than deleting them.

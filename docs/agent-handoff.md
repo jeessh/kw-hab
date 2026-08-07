@@ -60,21 +60,32 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
   single source for the gate.
 
 ### Current routes
-- `frontend/app/page.tsx` → `<EventsView/>` (member card UI, `components/EventsView.tsx`,
-  which fetches `/users/me` + `/events`).
-- `frontend/app/host/*` → host area. `frontend/app/signup/page.tsx` → account creation.
+- `frontend/app/events/page.tsx` → `<EventsView/>` (member card UI,
+  `components/EventsView.tsx`, behind `<AuthGate/>`).
+- `frontend/app/host/*` → admin console: `/host` (sign-in), `/host/events`,
+  `/host/events/new`, and the superadmin-only `/host/admins` + `/host/members`.
+- `frontend/app/signup/page.tsx` → member account creation.
 
 ### Relevant API (backend/app/api/routes/)
 - `auth.py`: `POST /auth/signup/user` (name → 3-icon key), `/login/user`,
-  `/signup/host`, `/login/host`, `/logout`, `GET /auth/me`.
-- `users.py`: `GET /users/me`, `GET /users`, `PATCH /users/{id}`, `DELETE /users/{id}`.
-- `events.py`, `attendance.py`, `hosts.py`.
+  `/user` (unified login-or-signup), `/login/host`, `/logout`, `GET /auth/me`.
+  **There is no `/signup/host`** — superadmins create organizer accounts.
+- `users.py`: `GET /users/me`, `PATCH /users/me`, `GET /users`,
+  `PATCH /users/{id}`, `DELETE /users/{id}`.
+- `hosts.py`: `GET /hosts/me`, plus superadmin-only
+  `GET|POST /hosts` and `PATCH|DELETE /hosts/{id}`.
+- `events.py`, `attendance.py`.
 
 ### Data model (backend/app/models/, schema.sql)
 - `users`: id, first_name, last_name, username (firstname_lastname, NOT unique),
-  password_hash, auth_type, **icons text[] UNIQUE**, created_at.
-  → **No preferences columns yet.**
-- `events`: category (free text, e.g. "Food"/"Newcomers"), accessibility_tags text[]
+  password_hash, auth_type, **icons text[] UNIQUE**, created_at, plus
+  `accessibility_prefs` / `interest_categories` (text[]) and the three
+  accessibility-mode toggles. The interest columns drive the member feed's
+  ordering.
+- `hosts`: `is_admin = false` is a plain admin (own programs only);
+  `is_admin = true` is a superadmin (any program, plus member and admin accounts).
+- `events`: category (**picked from `lib/categories.ts`, not free text** — the
+  feed matches member interests against it), accessibility_tags text[]
   (e.g. wheelchair_accessible, sensory_friendly, childcare_provided, free,
   no_registration), host_id, times, cover_image_url, etc.
 

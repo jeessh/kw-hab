@@ -10,7 +10,9 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
 
 ## Layout
 - `backend/` — FastAPI + SQLAlchemy. **Source of truth for the API.**
-- `frontend/` — Next.js (App Router) + Tailwind + Framer Motion.
+- `frontend/` — Next.js (App Router) + Tailwind + Framer Motion. Two distinct
+  surfaces: the member app (`/`, `/signup`, `/events`) and the staff admin
+  console (`/host/*`). They deliberately do not look alike — see below.
 - `vercel.json` (root) — single-origin deploy: `/api/*` → backend, `/*` → frontend.
 
 ## Run locally
@@ -42,18 +44,39 @@ Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
 `NEXT_PUBLIC_API_URL=/api`, `FRONTEND_ORIGIN`, `ROOT_PATH=/api`.
 
 ## Frontend architecture
-- `components/EventsView.tsx` (~1.3k lines) is the member experience — the whole
+
+### Member app
+- `components/EventsView.tsx` (~1.7k lines) is the member experience — the whole
   one-card-at-a-time discovery/attend flow lives here and orchestrates every
   accessibility mode below.
 - **Accessibility modes are per-member toggles**, persisted on the user (`Me.tts_enabled`,
   `voice_commands_enabled`, `eye_tracking_enabled`) and loaded from `GET /auth/me`.
   Each is a hook in `lib/`: `useTextToSpeech`, `useSpeechCommands`,
-  `useEyeTracking` (webgazer-based gaze cursor + `CalibrationOverlay`), `useHold`
+  `useHeadTracking` (head-pose cursor + `CalibrationOverlay`), `useHold`
   (press-and-hold-to-attend). Toggling a mode PATCHes `/users/me` and flips the
   hook — keep the persisted pref and the active hook in sync.
+- `lib/feed.ts` orders the feed by match score (interest == `event.category`,
+  pref ∈ `accessibility_tags`). **Personalization sorts, it never filters** —
+  nothing is hidden. The only things that remove cards are the member's own
+  explicit cost/organization filters. Ties fall back to the server's
+  deterministic order, so the feed never reshuffles between renders.
+
+### Admin console (`/host/*`)
+- `components/AdminShell.tsx` is the chrome: resolves the session before
+  rendering, then a persistent sidebar (Programs / Admins / Members).
+  `components/AdminTable.tsx` holds the shared table/button/field primitives.
+- Dense, squared-off, table-first — **deliberately not** the soft
+  one-thing-at-a-time member idiom. Staff doing repetitive work want everything
+  one click away; don't "harmonize" the two surfaces.
+- Superadmin-only pages pass `requireSuperadmin` to `AdminShell`, which gates the
+  page itself, not just the nav entry. The API refuses regardless.
+
+### Shared
 - All HTTP goes through the single `api()` helper in `lib/api.ts`
   (`credentials: "include"` for the auth cookie). Image uploads use raw `FormData`
   via `uploadImage()` — never force `Content-Type: application/json` on those.
+  Render errors with `apiMessage(err, fallback)`; `ApiError.message` is the raw
+  body, so printing it directly shows people `{"detail": …}`.
 
 ## Gotchas / conventions
 - **Passwords use `bcrypt` directly — do NOT reintroduce `passlib`** (crashes on
@@ -63,10 +86,38 @@ Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
   rate-limiting before treating this as production auth.
 - `JWT_SECRET` has no default — the app fails fast if it's unset.
 - DB engine uses `NullPool` + `prepare_threshold=None` for pgbouncer compatibility.
-- Roles: **members** (icon sign-in) · **hosts** (manage own programs) · **admins**
-  (hosts with `is_admin`).
+- **`lib/categories.ts` `CATEGORIES` is the one canonical topic list.** The signup
+  interest chips, the member topic stepper, and the host category picker all read
+  it. Interest matching compares a member's interests against `event.category`,
+  so a category typed by hand can never match anyone — don't reintroduce a
+  free-text category input, and don't start a second list.
+- The persisted field is `eye_tracking_enabled` but the hook is
+  **`useHeadTracking`** (head pose, not gaze — webgazer was replaced). The column
+  name is legacy; don't rename it expecting the hook to follow.
+
+## Roles and admin tiers
+- **members** — icon sign-in, the `/` + `/events` experience.
+- **admins** — hosts with `is_admin = false`. Create and manage only their own
+  programs.
+- **superadmins** — hosts with `is_admin = true`. Manage any program, plus member
+  accounts and other admin accounts. `require_admin` in `app/api/deps.py` gates
+  these, and it reads `is_admin` from the DB, not the token.
+
+**There is no host signup route.** It existed and was open to the internet;
+superadmins now create organizer accounts via `POST /hosts`, and `/host` is
+sign-in only. Don't add one back.
+
+Two invariants worth knowing before touching `app/api/routes/hosts.py`:
+- **Removing an admin reassigns their programs to the acting superadmin.**
+  `Host.events` cascades `delete-orphan`, so a plain `db.delete(host)` would
+  destroy programs members have already saved.
+- **A superadmin can't demote or delete themselves.** That refusal is what keeps
+  at least one superadmin in the system — you can only remove someone else's
+  rights, so your own survive.
 
 ## Status
-DB live + seeded. Deploy config present but **not yet deployed/verified**; the root
-`vercel.json` `services` schema needs validation against current Vercel support, and
-`vercel login` must be completed first.
+DB live + seeded. The root `vercel.json` `services` schema is settled (one project,
+`services.frontend` + `services.backend`, `/api/*` rewrite), but the deploy is
+**still not verified against a live build** — it also needs dashboard setup that
+can't be done from the repo (Framework = Services, Root Directory = repo root,
+backend env vars).
