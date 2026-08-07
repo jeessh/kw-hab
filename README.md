@@ -24,17 +24,22 @@ Sign-up asks only for first and last name; the app generates a 3-icon key
 ```bash
 # 1. Backend  (http://localhost:8000)
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # paste your Supabase DATABASE_URL + a JWT_SECRET
-python -m app.seed          # optional sample data
-uvicorn app.main:app --reload
+python3 -m venv .venv          # needs Python 3.10+; macOS system 3.9 crashes at
+                               # import on the `X | None` type unions
+.venv/bin/pip install -r requirements.txt
+
+# Create backend/.env (gitignored, no example file to copy) with at least:
+#   DATABASE_URL=postgresql+psycopg://...
+#   JWT_SECRET=<any long random string>
+
+.venv/bin/python -m app.seed   # optional sample data; idempotent
+.venv/bin/uvicorn app.main:app --reload
 
 # 2. Frontend (http://localhost:3000)
 cd ../frontend
 npm install
-cp .env.local.example .env.local
-npm run dev
+npm run dev                    # no env file needed locally — lib/api.ts
+                               # defaults to http://localhost:8000
 ```
 
 See [`backend/README.md`](backend/README.md) for the data model, permissions, and
