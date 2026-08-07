@@ -15,7 +15,9 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
 
 ### What's already DONE and verified
 - **Supabase DB** (ref `xybhshhcgdvfgryklsze`, region `aws-1-us-west-2`): schema
-  applied (5 tables) + **seeded** (2 hosts `admin@kwhab.org`/`admin123`, 2 events).
+  applied (5 tables) + **seeded** — 3 hosts (`admin@kwhab.org`/`admin123` and
+  `admin@admin.com`/`testtest` are superadmins, `hello@kwkitchen.org`/`host123`
+  is a plain admin) and 8 events.
 - **Local dev wired**: `backend/.env` has the correct pooler `DATABASE_URL`
   (:5432 session pooler). Run: `cd backend && .venv/bin/uvicorn app.main:app --reload`
   and `cd frontend && npm run dev`.
@@ -26,29 +28,34 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
   `main.py` honors `settings.ROOT_PATH` (`""` local, `/api` prod).
 
 ### What's NOT done
-- **Deploy not executed**: `vercel login` still pending; the root `vercel.json`
-  uses a `services` block that is **not standard Vercel schema** — needs validation
-  against real Vercel support (may need a conventional single-root + `api/` layout).
-- **Feature "item 1" below is designed but not implemented** (awaiting final nod).
+- **Deploy not verified against a live build.** The root `vercel.json` `services`
+  schema is settled (it's the documented pattern for shipping Next.js + FastAPI
+  as one project). What's outstanding is a real build plus dashboard setup that
+  can't be done from the repo: Framework = Services, Root Directory = repo root,
+  and the backend env vars.
+- The **AI feedback interview** tab (conversational feedback capture) is designed
+  but deliberately descoped — see §2.
 
-## 2. The current task ("item 1") — role-based root gate + onboarding
+## 2. Where the product actually landed
 
-**Goal:** `/` should route by auth state:
-- signed-in **user** → `/events`
-- signed-in **host** → `/events-dashboard`
-- **signed out** → `/get-started` (onboarding wizard that sets initial preferences)
+Interest-first discovery **shipped**. An earlier draft of this section proposed
+routing `/` by auth state into `/events-dashboard` and `/get-started`; that
+renaming was dropped. The routes are `/host/*` and `/signup` — see §3.
 
-**Approved design decisions:**
-- **Onboarding wizard with DB-stored prefs** (not a rename-only / not client-only).
-- **Move & redirect** old routes: `EventsView` (`/`) → `/events`; `/host*` →
-  `/events-dashboard*`; `/signup` → `/get-started`. Old paths 301 via `next.config.mjs`.
-- **Client-side gate** at `/` (splash → `GET /api/auth/me` → `router.replace`), for
-  dev/prod parity and consistency with existing client-auth. (Middleware+JWT-decode
-  is the flash-free alternative but needs `JWT_SECRET` in the frontend.)
-- Personalization **sorts, does not filter** — nothing is hidden.
+What did ship:
+- Members pick interests at signup and can edit them in settings; they persist on
+  `users.interest_categories`.
+- The feed **sorts by match score and never filters** — nothing is hidden by
+  personalization. Only the member's explicit cost/organization filters remove
+  cards. This was an approved decision; don't "improve" it into a filter.
+- Organizer accounts split into **admins** and **superadmins**, and the admin
+  console was rebuilt as a dense, staff-facing surface.
 
-**Open / unconfirmed:** user has not given the final "approve" on the design yet
-(the 3 points above: gate mechanism, taxonomy lists, sort-not-filter).
+**Descoped, still wanted:** an AI feedback tab that interviews members and
+caregivers conversationally. Cut because it needs an external API. If it comes
+back: the Anthropic key must stay server-side, it has to work for anonymous
+users, and `useSpeechCommands` is a keyword matcher — free-form voice answers
+need a sibling hook, not that one.
 
 ## 3. Architecture reference (what an implementer needs)
 
@@ -60,70 +67,78 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
   single source for the gate.
 
 ### Current routes
-- `frontend/app/page.tsx` → `<EventsView/>` (member card UI, `components/EventsView.tsx`,
-  which fetches `/users/me` + `/events`).
-- `frontend/app/host/*` → host area. `frontend/app/signup/page.tsx` → account creation.
+- `frontend/app/events/page.tsx` → `<EventsView/>` (member card UI,
+  `components/EventsView.tsx`, behind `<AuthGate/>`).
+- `frontend/app/host/*` → admin console: `/host` (sign-in), `/host/events`,
+  `/host/events/new`, and the superadmin-only `/host/admins` + `/host/members`.
+- `frontend/app/signup/page.tsx` → member account creation.
 
 ### Relevant API (backend/app/api/routes/)
 - `auth.py`: `POST /auth/signup/user` (name → 3-icon key), `/login/user`,
-  `/signup/host`, `/login/host`, `/logout`, `GET /auth/me`.
-- `users.py`: `GET /users/me`, `GET /users`, `PATCH /users/{id}`, `DELETE /users/{id}`.
-- `events.py`, `attendance.py`, `hosts.py`.
+  `/user` (unified login-or-signup), `/login/host`, `/logout`, `GET /auth/me`.
+  **There is no `/signup/host`** — superadmins create organizer accounts.
+- `users.py`: `GET /users/me`, `PATCH /users/me`, `GET /users`,
+  `PATCH /users/{id}`, `DELETE /users/{id}`.
+- `hosts.py`: `GET /hosts/me`, plus superadmin-only
+  `GET|POST /hosts` and `PATCH|DELETE /hosts/{id}`.
+- `events.py`, `attendance.py`.
 
 ### Data model (backend/app/models/, schema.sql)
 - `users`: id, first_name, last_name, username (firstname_lastname, NOT unique),
-  password_hash, auth_type, **icons text[] UNIQUE**, created_at.
-  → **No preferences columns yet.**
-- `events`: category (free text, e.g. "Food"/"Newcomers"), accessibility_tags text[]
+  password_hash, auth_type, **icons text[] UNIQUE**, created_at, plus
+  `accessibility_prefs` / `interest_categories` (text[]) and the three
+  accessibility-mode toggles. The interest columns drive the member feed's
+  ordering.
+- `hosts`: `is_admin = false` is a plain admin (own programs only);
+  `is_admin = true` is a superadmin (any program, plus member and admin accounts).
+- `events`: category (**picked from `lib/categories.ts`, not free text** — the
+  feed matches member interests against it), accessibility_tags text[]
   (e.g. wheelchair_accessible, sensory_friendly, childcare_provided, free,
   no_registration), host_id, times, cover_image_url, etc.
 
-## 4. Proposed changes for item 1 (for the implementer)
+## 4. How personalization actually works
 
-**DB migration** (Supabase `apply_migration` + SQLAlchemy `User` + `schema.sql`):
-```sql
-alter table users add column if not exists accessibility_prefs text[] not null default '{}';
-alter table users add column if not exists interest_categories text[] not null default '{}';
-```
-**Backend**: extend `POST /auth/signup/user` body (schemas/auth.py) with optional
-`accessibility_prefs`, `interest_categories`; persist on the user. Add both arrays to
-`UserOut` (schemas/user.py) so `GET /users/me` returns them.
+The prefs columns and the wizard described in earlier drafts of this doc are
+**done** — no migration to run, no `/get-started` to build.
 
-**Wizard `/get-started`** — 3 steps in the one-thing-at-a-time style:
-1. Accessibility needs (chips): `wheelchair_accessible, sensory_friendly,
-   childcare_provided, asl_interpretation, plain_language, transit_accessible,
-   scent_free, no_registration, free`
-2. Interests (chips): `Food, Newcomers, Arts, Sports & Rec, Education, Wellness,
-   Music, Social, Outdoors, Technology`
-3. Name → generate 3-icon key (reuse existing signup UX).
-→ one `POST /auth/signup/user` with name + prefs → cookie set → redirect `/events`.
+- `users.accessibility_prefs` and `users.interest_categories` (both `text[]`,
+  default `{}`) exist and are returned by `GET /users/me`.
+- Members set interests during `/signup` and edit them in the member settings
+  menu; both write through `PATCH /users/me`.
+- `frontend/lib/feed.ts` does the ordering: `+3` when an interest matches
+  `event.category`, `+1` per accessibility pref present in
+  `event.accessibility_tags`, ties broken by the server's original index so the
+  feed never reshuffles between renders.
+- The topic list lives in `frontend/lib/categories.ts` as `CATEGORIES`
+  (`Cooking, Food, Hangout, Sports, Games, Arts, Music, Advice`). It is the
+  **single** source for the signup chips, the member topic stepper, and the host
+  category picker. Adding a second list, or letting hosts type a category by
+  hand, silently breaks matching — a program with an off-list category can never
+  match anyone.
 
-**Personalization** (`/events`): fetch `/users/me` (now has prefs) + `/events`; sort by
-match score (+1 per interest == event.category, +1 per pref ∈ event.accessibility_tags);
-highest first, stable ties.
+## 5. Deployment (the one genuinely open thread)
 
-## 5. Spin-off agent ideas (with dependencies)
+The `vercel.json` `services` schema is settled and the project **builds green** —
+production deployments exist for `master`, with the Python backend lambda
+bundling correctly. What's broken is configuration, not code:
 
-Split so agents don't collide. **Backend is the unblocker — do it first or in parallel
-behind a stubbed contract.**
+- **Vercel Authentication (SSO)** is enabled for all deployments except custom
+  domains. Every `*.vercel.app` URL 302s to a login wall, so nobody outside the
+  Vercel account can open the app. Attach a custom domain, or disable protection
+  for production.
+- **`DATABASE_URL` points at the wrong pooler.** Runtime logs show
+  `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` against
+  `...pooler.supabase.com:5432`. That's the **session** pooler; serverless needs
+  the **:6543 transaction** pooler. This surfaced as a 500 on `POST /auth/user`
+  — i.e. signup is dead on the deployed app.
 
-- **A. Backend accessibility agent** (backend-only, independently testable):
-  prefs migration + `signup/user` extension + `UserOut` prefs. *No FE dependency.*
-  Deliverable other agents build against: the `/users/me` + signup contract.
-- **B. Frontend routing/gate agent**: root client-side gate, route moves
-  (`/events`, `/events-dashboard`), `next.config.mjs` redirects. *Independent of A*
-  (only touches routing/auth-me, which already exists).
-- **C. Onboarding wizard agent**: `/get-started` 3-step UI. *Depends on A's signup
-  contract* — can start against the stub, integrate when A lands.
-- **D. Feed personalization agent**: sort logic in `EventsView`. *Depends on A*
-  (needs prefs in `/users/me`); small, do last.
-- **E. Deployment agent**: finish `vercel login`, validate the `vercel.json`
-  `services` schema (likely rework to single-root + `api/` function), set the 6 prod
-  env vars, deploy, smoke-test `/api/health` + `/api/events`. *Fully independent* of A–D.
+Other required backend env vars: `JWT_SECRET`, `COOKIE_SECURE=true`,
+`FRONTEND_ORIGIN`, `ROOT_PATH=/api`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`.
+Dashboard side: Framework = **Services**, Root Directory = **repo root**.
 
-**Suggested parallelization:** A + B + E in parallel now; C follows A's contract;
-D last. Watch for the one shared file if B and C both touch `next.config.mjs` /
-`app/layout.tsx` — coordinate or sequence those edits.
+Once both are fixed, smoke-test `/api/health`, `/api/events`, and a real signup
+against the deployed URL — the DB failure above was only visible in runtime
+logs, not in the build.
 
 ## 6. Landmines (don't relearn the hard way)
 - Do NOT reintroduce `passlib`. Use `bcrypt` directly (`app/core/security.py`).

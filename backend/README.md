@@ -29,12 +29,20 @@ sharing that username (names may repeat; icons never do).
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # then paste your Supabase DATABASE_URL + a JWT_SECRET
-python3 -m app.seed
-uvicorn app.main:app --reload
+python3 -m venv .venv         # needs Python 3.10+; macOS system 3.9 crashes at
+                              # import on the `X | None` type unions
+.venv/bin/pip install -r requirements.txt
+
+# Create backend/.env (gitignored, there is no example file to copy):
+#   DATABASE_URL=postgresql+psycopg://...   # :5432 session pooler for local
+#   JWT_SECRET=<any long random string>     # no default — the app won't start
+
+.venv/bin/python -m app.seed  # idempotent; skips if hosts already exist
+.venv/bin/uvicorn app.main:app --reload
 ```
+
+Call the venv binaries directly rather than activating — it's the difference
+between running 3.12 and whatever `python3` happens to be on PATH.
 
 Interactive docs: http://localhost:8000/docs
 
