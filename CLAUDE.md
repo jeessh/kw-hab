@@ -116,8 +116,21 @@ Two invariants worth knowing before touching `app/api/routes/hosts.py`:
   rights, so your own survive.
 
 ## Status
-DB live + seeded. The root `vercel.json` `services` schema is settled (one project,
-`services.frontend` + `services.backend`, `/api/*` rewrite), but the deploy is
-**still not verified against a live build** — it also needs dashboard setup that
-can't be done from the repo (Framework = Services, Root Directory = repo root,
-backend env vars).
+DB live + seeded. The Vercel project (`kw-hab`) **builds and deploys green** —
+the `services` schema works, and production deployments exist for `master`.
+
+Two things still block anyone outside the Vercel account from using it:
+
+1. **Vercel Authentication (SSO) is on** for every deployment except custom
+   domains, so all `*.vercel.app` URLs return a 302 to a login wall. Either
+   attach a custom domain or turn protection off for production.
+2. **The deployed backend can't reach the database.** Runtime logs show
+   `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` against
+   `aws-1-us-west-2.pooler.supabase.com:5432`. Port 5432 is the **session**
+   pooler — serverless has to use the **:6543 transaction** pooler. Vercel's
+   `DATABASE_URL` looks like a copy of the local one; it needs the :6543 form.
+
+Neither is a code change; both are dashboard settings. Until they're fixed the
+deployment is effectively local-only, so **treat "runs on my machine" as the
+current state of truth** and re-verify `/api/health` + a real signup against the
+deployed URL once they're sorted.

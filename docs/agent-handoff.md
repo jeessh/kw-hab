@@ -118,12 +118,27 @@ The prefs columns and the wizard described in earlier drafts of this doc are
 
 ## 5. Deployment (the one genuinely open thread)
 
-The `vercel.json` `services` schema is settled. What remains is a live build plus
-dashboard configuration that can't be committed: Framework = **Services**, Root
-Directory = **repo root** (not `frontend/`), and the backend env vars
-(`DATABASE_URL` on the :6543 transaction pooler, `JWT_SECRET`, `COOKIE_SECURE`,
-`FRONTEND_ORIGIN`, `ROOT_PATH=/api`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`).
-Smoke-test `/api/health` and `/api/events` after the first deploy.
+The `vercel.json` `services` schema is settled and the project **builds green** —
+production deployments exist for `master`, with the Python backend lambda
+bundling correctly. What's broken is configuration, not code:
+
+- **Vercel Authentication (SSO)** is enabled for all deployments except custom
+  domains. Every `*.vercel.app` URL 302s to a login wall, so nobody outside the
+  Vercel account can open the app. Attach a custom domain, or disable protection
+  for production.
+- **`DATABASE_URL` points at the wrong pooler.** Runtime logs show
+  `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` against
+  `...pooler.supabase.com:5432`. That's the **session** pooler; serverless needs
+  the **:6543 transaction** pooler. This surfaced as a 500 on `POST /auth/user`
+  — i.e. signup is dead on the deployed app.
+
+Other required backend env vars: `JWT_SECRET`, `COOKIE_SECURE=true`,
+`FRONTEND_ORIGIN`, `ROOT_PATH=/api`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`.
+Dashboard side: Framework = **Services**, Root Directory = **repo root**.
+
+Once both are fixed, smoke-test `/api/health`, `/api/events`, and a real signup
+against the deployed URL — the DB failure above was only visible in runtime
+logs, not in the build.
 
 ## 6. Landmines (don't relearn the hard way)
 - Do NOT reintroduce `passlib`. Use `bcrypt` directly (`app/core/security.py`).
