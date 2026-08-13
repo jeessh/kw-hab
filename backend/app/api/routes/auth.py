@@ -20,7 +20,7 @@ from app.core.rate_limit import (
     clear as clear_rate_limit,
     client_key,
     enforce as enforce_rate_limit,
-    record_failure,
+    record,
 )
 from app.core.security import (
     create_access_token,
@@ -129,7 +129,7 @@ def login_user(
             clear_rate_limit(db, id_key)
             set_auth_cookie(response, create_access_token(user.id, "user"))
             return {"id": str(user.id), "username": user.username, "role": "user"}
-    record_failure(db, id_key, ip_key)
+    record(db, id_key, ip_key)
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
 
 
@@ -191,7 +191,7 @@ def auth_user(
     if same_name and not body.create_new:
         # A wrong icon key against a name that exists is exactly the signal a
         # brute-force sweep produces, so it counts against the budget.
-        record_failure(db, id_key, ip_key)
+        record(db, id_key, ip_key)
         return {"mode": "conflict"}
 
     # 3) Fresh (name + icons) → create the account. Different people may share
@@ -248,7 +248,7 @@ def login_host(
 
     host = db.query(Host).filter(Host.email == email).first()
     if not host or not verify_password(body.password, host.password_hash):
-        record_failure(db, id_key, ip_key)
+        record(db, id_key, ip_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     clear_rate_limit(db, id_key)
     set_auth_cookie(

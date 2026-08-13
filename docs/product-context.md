@@ -181,8 +181,8 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
 | R-1 | **`registration_mode` + `registration_url`** | ❌ | No mode and no URL field on `Event`. Per §3.1 the mode is `internal`/`external`, and `registration_url` is required when external. Content migration from the live calendar is impossible without it. |
-| R-2 | The four registration states drive distinct member behaviour | ❌ | `requires_signup` is set by hosts and read by **nothing** in the member UI — save and register are the same action. Per §3.1: save (×2 states), register in-platform, or leave for the organizer's site. |
-| R-2a | Member knows they are leaving the platform | ❌ | Nothing exists. Must be carried visually + a few words per §3.3, not a paragraph. |
+| R-2 | The four registration states drive distinct member behaviour | 🟡 | Done on the **event page** (`components/EventActions.tsx`): external sign-up leads with the outbound link, everything else saves. The one-card carousel still treats every state identically. |
+| R-2a | Member knows they are leaving the platform | ✅ | The destination hostname sits under the button — says "you are leaving" more plainly than a sentence about it, and costs four words. |
 | R-3 | Browse without an account; save is the gate | ❌ | Per §3.7. `/events` and the per-event page go public; the save action triggers sign-in and then **completes the save the member intended** — no plumbing for that exists (`/signup` hard-codes `router.replace("/events")`). |
 | R-4 | Un-save | ❌ | `DELETE /events/{id}/attend` exists; no UI calls it. |
 | R-5 | Saves actually persist | 🟡 | `attend()` swallows every error (`EventsView.tsx:283`) — member sees "Saved ✓", server may have nothing. |
@@ -208,12 +208,12 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
 | M-1 | **Per-event save/signup counts visible to the NPO** | ❌ | No count on `EventOut`, no host-scoped endpoint, no column in the console. `event_attendees` is current state, not a log, and has no `event_id`-leading index. |
-| M-2 | Registration click-through tracking | ❌ | Requires R-1 first, then an append-only click table. |
+| M-2 | Registration click-through tracking | ✅ | Append-only `event_registration_clicks`; `POST /events/{id}/registration-click` is public (anonymous clicks count, `user_id` nullable) and IP-bounded. Recorded before navigating out, and a failure to record never costs the member the link. |
 | M-3 | Admin analytics dashboard | ❌ | No route, no endpoint, no charting dep. |
 | M-4 | Event postings trend | ❌ | `created_at` exists; nothing aggregates it. |
-| M-5 | **Per-event public URL** | ❌ | No `/events/[id]`. The current card index is in-memory state, never in the URL. |
-| M-6 | SEO / metadata / OG cards | ❌ | One global title+description (`layout.tsx:11`). No OG, no sitemap, no robots, no JSON-LD, no favicon. Every shared link renders an identical grey card. |
-| M-7 | Indexable event content | ❌ | All 7 routes are `"use client"`; event data is fetched after a cookie check no crawler holds. Total indexable footprint ≈ two sentences of landing copy. (`GET /events` and `/events/{id}` are already public — this is a frontend-only gap.) |
+| M-5 | **Per-event public URL** | ✅ | `/events/[id]`, server-rendered and public. |
+| M-6 | SEO / metadata / OG cards | 🟡 | Per-event title/description/canonical, OG + Twitter cards with the cover image, JSON-LD `Event`, `metadataBase`, sitemap and robots. Still missing: a favicon, and an OG image for pages with no cover. |
+| M-7 | Indexable event content | 🟡 | Event pages are in the HTML and in the sitemap. The `/events` carousel is still client-only behind the auth gate — see R-3. |
 
 ### Accessibility
 

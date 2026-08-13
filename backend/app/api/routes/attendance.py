@@ -1,16 +1,47 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, get_optional_user
+from app.core.rate_limit import CLICK_LIMIT, client_key, enforce, record
 from app.models.attendance import REMOVED, SAVED, Attendance
+from app.models.click import RegistrationClick
 from app.models.event import Event
 from app.models.user import User
 from app.schemas.event import EventOut
 
 router = APIRouter(tags=["attendance"])
+
+
+@router.post(
+    "/events/{event_id}/registration-click",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def record_registration_click(
+    event_id: uuid.UUID,
+    request: Request,
+    user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """A member followed this program's outbound registration link.
+
+    Public: the event page is public, and a click is worth counting whether or
+    not we know who made it. When registration lives on the agency's own site
+    this is the last observable step, so it stands in for "signed up" in the
+    adoption numbers nonprofits report.
+    """
+    event = db.get(Event, event_id)
+    if not event or event.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
+    ip_key = f"{client_key(request)}:clicks"
+    enforce(db, {ip_key: CLICK_LIMIT})
+    record(db, ip_key)
+    db.add(
+        RegistrationClick(event_id=event_id, user_id=user.id if user else None)
+    )
+    db.commit()
 
 
 @router.post("/events/{event_id}/attend", status_code=status.HTTP_201_CREATED)

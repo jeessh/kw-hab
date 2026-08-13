@@ -36,6 +36,11 @@ IDENTITY_LIMIT = 10
 # Per source address, across every auth route. Only ever drains by expiry, so
 # it has to clear a whole facility's worth of honest mistakes in one window.
 IP_LIMIT = 200
+# Outbound registration-link clicks per address. These feed the numbers
+# nonprofits put in grant applications, so the endpoint being public and
+# append-only makes inflating them cheap; this is a floor on that, not a
+# solution. Set well above what a room of members browsing could produce.
+CLICK_LIMIT = 300
 WINDOW_SECONDS = 15 * 60
 
 _RETRY_MESSAGE = "Too many tries. Please wait a few minutes and try again."
@@ -100,8 +105,8 @@ def enforce(db: Session, keys: dict[str, int]) -> None:
             )
 
 
-def record_failure(db: Session, *keys: str) -> None:
-    """Count one failed attempt against each key.
+def record(db: Session, *keys: str) -> None:
+    """Count one attempt against each key.
 
     Commits on its own: the request it belongs to is about to raise, and the
     attempt has to be recorded anyway or the limit never fills.
