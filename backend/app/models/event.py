@@ -42,6 +42,12 @@ class Event(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Archived, not destroyed. Every read path filters on this; nothing deletes
+    # the row, because the attendance attached to it is what nonprofits report
+    # in grant applications.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     host = relationship("Host", back_populates="events")
 
@@ -56,6 +62,8 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventImage.sort_order",
     )
-    attendees = relationship(
-        "Attendance", back_populates="event", cascade="all, delete-orphan"
-    )
+    # No delete-orphan here on purpose. Events are archived, never deleted, so
+    # this cascade would only ever fire from a future `db.delete(event)` — and
+    # then it would silently take the attendance history with it. Without it,
+    # such a call fails loudly on the NOT NULL event_id instead.
+    attendees = relationship("Attendance", back_populates="event")

@@ -44,7 +44,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not p or p.get("role") != "user":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in as a member")
     user = db.get(User, uuid.UUID(p["sub"]))
-    if not user:
+    # Tokens last a week, so an archived member could otherwise keep using the
+    # app until theirs expired.
+    if not user or user.deleted_at is not None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
     return user
 

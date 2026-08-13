@@ -2,9 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.db.session import Base, engine
 
-# Import models so metadata is populated before create_all.
+# Import models so every mapper is configured before the first request.
 import app.models  # noqa: F401
 from app.api.routes import attendance, auth, events, hosts, users
 
@@ -19,13 +18,10 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-def on_startup():
-    # Convenience for the hackathon; use Alembic migrations for anything real.
-    # Skipped when served under /api (serverless): create_all on every cold
-    # start adds catalog round trips through pgbouncer.
-    if not settings.ROOT_PATH:
-        Base.metadata.create_all(bind=engine)
+# The schema is owned by Alembic (`alembic upgrade head`), not by create_all on
+# startup. create_all only ever emitted CREATE TABLE IF NOT EXISTS, so it
+# silently did nothing for column changes — a new field worked locally and then
+# 500'd every query in production against the un-ALTERed table.
 
 
 @app.get("/health")

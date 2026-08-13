@@ -37,9 +37,27 @@ python3 -m venv .venv         # needs Python 3.10+; macOS system 3.9 crashes at
 #   DATABASE_URL=postgresql+psycopg://...   # :5432 session pooler for local
 #   JWT_SECRET=<any long random string>     # no default — the app won't start
 
-.venv/bin/python -m app.seed  # idempotent; skips if hosts already exist
+.venv/bin/alembic upgrade head  # owns the schema; run before seeding
+.venv/bin/python -m app.seed    # idempotent; skips if hosts already exist
 .venv/bin/uvicorn app.main:app --reload
 ```
+
+## Migrations
+
+Alembic owns the schema — nothing creates tables on startup any more. After
+changing a model:
+
+```bash
+.venv/bin/alembic revision --autogenerate -m "what changed"
+.venv/bin/alembic upgrade head          # then deploy, then run it against prod
+```
+
+The baseline revision is written idempotently (`create table if not exists`)
+because the live Supabase database was provisioned by hand before Alembic
+existed, so `upgrade head` is safe to run against it and no `alembic stamp` step
+is needed. `alembic/env.py` reuses the app's engine, so it inherits the
+NullPool + `prepare_threshold=None` settings that the pgbouncer pooler needs,
+and reads `DATABASE_URL` from `.env` rather than from `alembic.ini`.
 
 Call the venv binaries directly rather than activating — it's the difference
 between running 3.12 and whatever `python3` happens to be on PATH.

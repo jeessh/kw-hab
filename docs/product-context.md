@@ -140,8 +140,9 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
-| P-1 | **Schema changes can reach the live DB** | ❌ | No Alembic. `create_all()` runs only when `ROOT_PATH` is empty (`app/main.py:27`) and never ALTERs. `backend/schema.sql` is hand-run in the Supabase editor. Every requirement below needs a hand-written `ALTER`, deployed in lockstep, no rollback. **Blocks everything else.** |
-| P-2 | Attendance data survives event/account changes | ❌ | `delete_event` hard-deletes; `Event.attendees` cascades `delete-orphan` (`models/event.py:59`) and the FK is `ON DELETE CASCADE`. Unattend also hard-deletes (`attendance.py:49`). Any admin can destroy their own program's grant evidence in one click. |
+| P-1 | **Schema changes can reach the live DB** | ✅ | Alembic added; `create_all` on startup removed, `schema.sql` deleted. Baseline revision is idempotent so it is safe against the hand-provisioned Supabase DB with no `stamp` step. |
+| P-2 | Attendance data survives event/account changes | ✅ | Events and members archive via `deleted_at`; un-saving flips `event_attendees.status`; the `attendees` relationships dropped `delete-orphan` so a stray `db.delete()` fails loudly instead of erasing history. Remaining hardening: the DB-level `ON DELETE CASCADE` is still in place as a latent path — see P-2a. |
+| P-2a | FK-level protection for attendance | ❌ | `event_attendees` FKs are still `ON DELETE CASCADE`. Unreachable from the API now that nothing hard-deletes, but a manual `DELETE` in the Supabase SQL editor would still destroy history. Switch to `RESTRICT`. |
 | P-3 | Rate limiting on auth | ❌ | None anywhere. Icon keyspace is ~59k combos and the credential is name+icons — exhaustible unauthenticated. |
 | P-4 | Feed returns all events | 🟡 | `/events` defaults to 100, caps at 200 (`events.py:86`); the member feed requests no params (`app/events/page.tsx:16`) and sorts client-side, so past row 100 the "personalization never filters" invariant is silently false. |
 

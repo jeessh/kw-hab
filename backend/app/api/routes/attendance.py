@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_user, get_db
-from app.models.attendance import Attendance
+from app.models.attendance import REMOVED, SAVED, Attendance
 from app.models.event import Event
 from app.models.user import User
 from app.schemas.event import EventOut
@@ -19,12 +19,19 @@ def attend_event(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not db.get(Event, event_id):
+    event = db.get(Event, event_id)
+    if not event or event.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
     existing = db.get(Attendance, {"user_id": user.id, "event_id": event_id})
     if existing:
-        return {"ok": True, "already": True}
-    db.add(Attendance(user_id=user.id, event_id=event_id))
+        # A previously un-saved row is re-saved in place rather than recreated —
+        # the row never went away, so an insert here would just hit the PK.
+        if existing.status == SAVED:
+            return {"ok": True, "already": True}
+        existing.status = SAVED
+        db.commit()
+        return {"ok": True}
+    db.add(Attendance(user_id=user.id, event_id=event_id, status=SAVED))
     try:
         db.commit()
     except IntegrityError as exc:
@@ -46,9 +53,11 @@ def unattend_event(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Un-saving flips the status; the row stays so the organizer's cumulative
+    save count doesn't walk backwards."""
     existing = db.get(Attendance, {"user_id": user.id, "event_id": event_id})
-    if existing:
-        db.delete(existing)
+    if existing and existing.status != REMOVED:
+        existing.status = REMOVED
         db.commit()
 
 
@@ -61,7 +70,11 @@ def my_events(
     return (
         db.query(Event)
         .join(Attendance, Attendance.event_id == Event.id)
-        .filter(Attendance.user_id == user.id)
+        .filter(
+            Attendance.user_id == user.id,
+            Attendance.status == SAVED,
+            Event.deleted_at.is_(None),
+        )
         .options(joinedload(Event.host), selectinload(Event.images))
         .order_by(Event.starts_at.asc().nullslast(), Event.id.asc())
         .all()

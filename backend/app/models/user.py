@@ -52,7 +52,13 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-
-    attending = relationship(
-        "Attendance", back_populates="user", cascade="all, delete-orphan"
+    # Archived, not destroyed — see Event.deleted_at. An archived member can't
+    # sign in, and still holds their (username, icons) slot, so nobody
+    # accidentally inherits their key.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
+
+    # No delete-orphan — see Event.attendees. Archiving a member must not erase
+    # them from the counts their programs already reported.
+    attending = relationship("Attendance", back_populates="user")

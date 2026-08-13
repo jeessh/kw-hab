@@ -22,8 +22,16 @@ cd backend && .venv/bin/uvicorn app.main:app --reload
 # frontend → http://localhost:3000
 cd frontend && npm run dev
 ```
-`backend/.env` (gitignored) holds `DATABASE_URL` + `JWT_SECRET`; seed with
+`backend/.env` (gitignored) holds `DATABASE_URL` + `JWT_SECRET`. Apply the schema
+with `.venv/bin/alembic upgrade head`, then seed with
 `.venv/bin/python -m app.seed` (idempotent; skips if hosts exist).
+
+**Alembic owns the schema.** Nothing creates tables on startup any more —
+`create_all` only ever emitted `CREATE TABLE IF NOT EXISTS`, so a new column
+worked locally and then 500'd every query in production against the un-ALTERed
+table. Model change → `alembic revision --autogenerate` → deploy → run
+`upgrade head` against prod. The baseline revision is idempotent so it is safe
+against the hand-provisioned Supabase database; no `alembic stamp` needed.
 Frontend also has `npm run typecheck` (`tsc --noEmit`) and `npm run build`.
 Interactive API docs: http://localhost:8000/docs. **There is no test suite,
 linter, or CI** — verify changes by running the app and typecheck.
@@ -86,6 +94,12 @@ Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
   rate-limiting before treating this as production auth.
 - `JWT_SECRET` has no default — the app fails fast if it's unset.
 - DB engine uses `NullPool` + `prepare_threshold=None` for pgbouncer compatibility.
+- **Nothing is deleted; things are archived.** Events and members carry
+  `deleted_at`, un-saving flips `event_attendees.status` to `removed` rather than
+  dropping the row, and the `attendees` relationships deliberately have no
+  `delete-orphan` cascade. Attendance counts are what nonprofits put in grant
+  applications, so they have to outlive the event and the account. Every read
+  path filters `deleted_at IS NULL`; add the filter when you add a query.
 - **`lib/categories.ts` `CATEGORIES` is the one canonical topic list.** The signup
   interest chips, the member topic stepper, and the host category picker all read
   it. Interest matching compares a member's interests against `event.category`,

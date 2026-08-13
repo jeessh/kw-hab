@@ -32,6 +32,7 @@ python3 -m venv .venv          # needs Python 3.10+; macOS system 3.9 crashes at
 #   DATABASE_URL=postgresql+psycopg://...
 #   JWT_SECRET=<any long random string>
 
+.venv/bin/alembic upgrade head # applies the schema (Alembic owns it)
 .venv/bin/python -m app.seed   # optional sample data; idempotent
 .venv/bin/uvicorn app.main:app --reload
 
