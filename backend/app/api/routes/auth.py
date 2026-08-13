@@ -114,8 +114,9 @@ def login_user(body: UserLogin, response: Response, db: Session = Depends(get_db
 @router.post("/user")
 def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db)):
     """Unified member entry. If the name + icon key matches an existing account,
-    log in; otherwise create a new account. Returns `mode` ("login"/"signup") so
-    the UI can show the right text."""
+    log in; otherwise create a new account. Returns `mode` — "login", "signup",
+    or "conflict" (the name exists but the icons don't match) — so the UI can
+    show the right text."""
     try:
         icons = validate_icon_selection(body.icons)
     except ValueError as exc:
@@ -126,7 +127,8 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
 
     # 1) Existing record? The key is name + icons, so verify the credential
     #    against each same-named account (usernames alone aren't unique).
-    for user in db.query(User).filter(User.username == username).all():
+    same_name = db.query(User).filter(User.username == username).all()
+    for user in same_name:
         if user.auth_type == "icon" and verify_password(
             password, user.password_hash
         ):
@@ -138,7 +140,17 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
                 "icons": user.icons,
             }
 
-    # 2) Fresh (name + icons) → create the account. Different people may share
+    # 2) No credential match, but somebody already signs in under this name. The
+    #    overwhelmingly likely explanation is a mistapped icon, not a second
+    #    person who happens to share the name — and creating an account here
+    #    silently strands the member's saved programs in the account they
+    #    actually own, while the UI congratulates them. Memory is a stated top
+    #    barrier for these members, so mistaps are expected, not exceptional.
+    #    Hand the decision back to the UI; `create_new` is the confirmed override.
+    if same_name and not body.create_new:
+        return {"mode": "conflict"}
+
+    # 3) Fresh (name + icons) → create the account. Different people may share
     #    the same icons as long as their names differ; a clash needs both.
     user = User(
         first_name=body.first_name.strip(),
