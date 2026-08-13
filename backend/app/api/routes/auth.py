@@ -14,6 +14,14 @@ from app.core.icons import (
     random_icon_set,
     validate_icon_selection,
 )
+from app.core.rate_limit import (
+    IDENTITY_LIMIT,
+    IP_LIMIT,
+    clear as clear_rate_limit,
+    client_key,
+    enforce as enforce_rate_limit,
+    record_failure,
+)
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -99,25 +107,39 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
 
 
 @router.post("/login/user")
-def login_user(body: UserLogin, response: Response, db: Session = Depends(get_db)):
+def login_user(
+    body: UserLogin,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    username = body.username.strip().lower()
+    ip_key = client_key(request)
+    id_key = f"user:{username}"
+    enforce_rate_limit(db, {id_key: IDENTITY_LIMIT, ip_key: IP_LIMIT})
+
     # Usernames are not unique, so check the password against every match.
     candidates = (
         db.query(User)
-        .filter(
-            User.username == body.username.strip().lower(),
-            User.deleted_at.is_(None),
-        )
+        .filter(User.username == username, User.deleted_at.is_(None))
         .all()
     )
     for user in candidates:
         if verify_password(body.password, user.password_hash):
+            clear_rate_limit(db, id_key)
             set_auth_cookie(response, create_access_token(user.id, "user"))
             return {"id": str(user.id), "username": user.username, "role": "user"}
+    record_failure(db, id_key, ip_key)
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
 
 
 @router.post("/user")
-def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db)):
+def auth_user(
+    body: UserAuth,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """Unified member entry. If the name + icon key matches an existing account,
     log in; otherwise create a new account. Returns `mode` — "login", "signup",
     or "conflict" (the name exists but the icons don't match) — so the UI can
@@ -129,6 +151,10 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
 
     username = _make_username(body.first_name, body.last_name)
     password = credential(username, icons)
+
+    ip_key = client_key(request)
+    id_key = f"user:{username}"
+    enforce_rate_limit(db, {id_key: IDENTITY_LIMIT, ip_key: IP_LIMIT})
 
     # 1) Existing record? The key is name + icons, so verify the credential
     #    against each same-named account (usernames alone aren't unique).
@@ -142,6 +168,7 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
         if user.auth_type == "icon" and verify_password(
             password, user.password_hash
         ):
+            clear_rate_limit(db, id_key)
             set_auth_cookie(response, create_access_token(user.id, "user"))
             return {
                 "mode": "login",
@@ -162,6 +189,9 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
     #    /auth/signup/user with a custom_password); revisit if that route is
     #    ever wired up.
     if same_name and not body.create_new:
+        # A wrong icon key against a name that exists is exactly the signal a
+        # brute-force sweep produces, so it counts against the budget.
+        record_failure(db, id_key, ip_key)
         return {"mode": "conflict"}
 
     # 3) Fresh (name + icons) → create the account. Different people may share
@@ -205,10 +235,22 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
 
 
 @router.post("/login/host")
-def login_host(body: HostLogin, response: Response, db: Session = Depends(get_db)):
-    host = db.query(Host).filter(Host.email == body.email.strip().lower()).first()
+def login_host(
+    body: HostLogin,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    email = body.email.strip().lower()
+    ip_key = client_key(request)
+    id_key = f"host:{email}"
+    enforce_rate_limit(db, {id_key: IDENTITY_LIMIT, ip_key: IP_LIMIT})
+
+    host = db.query(Host).filter(Host.email == email).first()
     if not host or not verify_password(body.password, host.password_hash):
+        record_failure(db, id_key, ip_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+    clear_rate_limit(db, id_key)
     set_auth_cookie(
         response, create_access_token(host.id, "host", is_admin=host.is_admin)
     )
