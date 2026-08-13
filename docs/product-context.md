@@ -152,7 +152,7 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
 | A-1 | Member sign-in without email/password | ✅ | 3-icon key. Genuinely good for the barrier profile. |
-| A-2 | **A wrong icon tap does not destroy the account** | ❌ | `POST /auth/user` creates a new account on no-match (`auth.py:143-164`); UI says "You're in!" and saved events vanish. Worst failure mode for a memory-barrier population. |
+| A-2 | **A wrong icon tap does not destroy the account** | ✅ | Returns `mode: "conflict"`; creating a second account under an existing name now needs an explicit `create_new`. Note the conflict response is a new username-enumeration oracle — mild, and the reason P-3 mattered. |
 | A-3 | Member account recovery | ❌ | No reset, hint, or lookup path in FE or BE. |
 | A-4 | Account creation without typing | ❌ | `/signup` gates step 1 on two typed name fields (`signup/page.tsx:117`). "Can't type" is a stated barrier. Steps 2-4 are tap-only and fine. |
 | A-5 | NPO staff password recovery | ❌ | Only path is a superadmin `PATCH /hosts/{id}`. A locked-out sole superadmin is unrecoverable without DB access. |
@@ -180,7 +180,7 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
-| R-1 | **`registration_mode` + `registration_url`** | ❌ | No mode and no URL field on `Event`. Per §3.1 the mode is `internal`/`external`, and `registration_url` is required when external. Content migration from the live calendar is impossible without it. |
+| R-1 | **`registration_mode` + `registration_url`** | ✅ | Both on `Event`; validation shared by create and update, and update checks the merged row. The link is required only in the external+signup state. |
 | R-2 | The four registration states drive distinct member behaviour | 🟡 | Done on the **event page** (`components/EventActions.tsx`): external sign-up leads with the outbound link, everything else saves. The one-card carousel still treats every state identically. |
 | R-2a | Member knows they are leaving the platform | ✅ | The destination hostname sits under the button — says "you are leaving" more plainly than a sentence about it, and costs four words. |
 | R-3 | Browse without an account; save is the gate | ❌ | Per §3.7. `/events` and the per-event page go public; the save action triggers sign-in and then **completes the save the member intended** — no plumbing for that exists (`/signup` hard-codes `router.replace("/events")`). |
@@ -199,8 +199,8 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | N-3 | Can't edit another org's events | ✅ | Enforced in API (403) and UI ("View only"). |
 | N-4 | Superadmin can manage any event + accounts | ✅ | With self-demotion/self-deletion guards intact. |
 | N-5 | Deletion restricted to superadmins | ❌ | Any owner can delete. See §3.2 — recommend archive instead. |
-| N-6 | Success confirmation after publish/edit/delete | ❌ | `router.push` back to the table, no toast, no highlight. The Admins page does this correctly; Programs never got it. |
-| N-7 | Copy shareable link on create | ❌ | No clipboard code, and no per-event URL to copy. |
+| N-6 | Success confirmation after publish/edit/delete | 🟡 | Publishing confirms and hands over a share link. **Edit and delete are still silent** — they just reload the table. |
+| N-7 | Copy shareable link on create | ✅ | Copy link on every row plus on the publish confirmation; browser-read origin, prompt fallback. |
 | N-8 | Reschedule notifies affected members | ❌ | No notification of any kind. |
 
 ### Metrics & reach
