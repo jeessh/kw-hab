@@ -78,7 +78,7 @@ function NewProgramForm() {
       const accessibility_tags = [...tags];
       if (isFree) accessibility_tags.push("free");
 
-      await api("/events", {
+      const created = await api<{ id: string }>("/events", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
@@ -95,7 +95,10 @@ function NewProgramForm() {
           gallery: gallery.map((url, i) => ({ url, sort_order: i })),
         }),
       });
-      router.push("/host/events");
+      // Carry the new id so the list can confirm what happened and hand over a
+      // shareable link. Publishing used to drop you into a table sorted by date
+      // with nothing to say it worked.
+      router.push(`/host/events?created=${created.id}`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace("/host");
