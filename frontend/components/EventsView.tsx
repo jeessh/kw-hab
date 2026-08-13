@@ -189,8 +189,9 @@ export function EventsView({
   // a failure is non-fatal (leave `saved` as-is).
   useEffect(() => {
     let alive = true;
+    // No .catch fallback: the route resolves this to [] rather than rejecting,
+    // because signed-out is a normal outcome here, not a failure to retry.
     attendedPromise
-      .catch(() => api<Event[]>("/users/me/events"))
       .then((attended) => {
         if (!alive) return;
         setSaved((prevSaved) => {
@@ -311,18 +312,20 @@ export function EventsView({
       try {
         await api(`/events/${ev.id}/attend`, { method: "POST" });
       } catch (e) {
-        if (e instanceof ApiError && e.status === 401) {
-          toSignIn(ev);
-          return;
-        }
-        // Roll the badge back. Leaving it would tell someone a program is
-        // saved when the server has no record of it — they find out by turning
-        // up to nothing, or by reloading and watching it vanish.
+        // Roll the badge back on any failure, including an expired session.
+        // Leaving it would tell someone a program is saved when the server has
+        // no record of it — they find out by turning up to nothing, or by
+        // reloading and watching it vanish.
         setSaved((prevSaved) => {
           const next = new Set(prevSaved);
           next.delete(ev.id);
           return next;
         });
+        // Signed in a moment ago, not any more: the cookie expired mid-request.
+        if (e instanceof ApiError && e.status === 401) {
+          toSignIn(ev);
+          return;
+        }
         setSrMessage(`Could not save ${ev.title}. Please try again.`);
       }
     },

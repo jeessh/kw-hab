@@ -61,19 +61,24 @@ export const SavedEvents = memo(function SavedEvents({
   // Refetch on each open so newly-attended events appear; stale data stays
   // visible while it runs (loading/error only block when we have none).
   const prevOpen = useRef(false);
+  // Whose list is currently loaded, so a member arriving while the panel is
+  // already open still gets one — `justOpened` alone would never fire again.
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
     const justOpened = open && !prevOpen.current;
     prevOpen.current = open;
     // Nothing to fetch signed out; asking would just 401 and surface as an
     // error, when the honest answer is "sign in first".
-    if (!justOpened || !me) return;
+    if (!open || !me) return;
+    if (!justOpened && loadedFor.current === me.id) return;
+    loadedFor.current = me.id;
     setLoading(true);
     setError(false);
     api<Event[]>("/users/me/events")
       .then(setEvents)
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, me]);
 
   // Dialog focus management (Modal.tsx-style): once fully open, move focus in,
   // trap Tab, and restore on close. Gated on reveal >= 1 so a drag "peek"
