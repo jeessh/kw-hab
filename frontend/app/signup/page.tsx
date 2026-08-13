@@ -26,6 +26,9 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   // Whether the submit logged into an existing account or created a new one.
   const [mode, setMode] = useState<"login" | "signup" | null>(null);
+  // The name is already in use but these icons don't open it. Offer a retry
+  // before offering to create a second account under the same name.
+  const [conflict, setConflict] = useState(false);
 
   function toggleInterest(label: string) {
     setInterests((prev) =>
@@ -37,6 +40,7 @@ export default function SignupPage() {
 
   function togglePick(slug: string) {
     setError(null);
+    setConflict(false);
     setPicked((prev) => {
       if (prev.includes(slug)) return prev.filter((s) => s !== slug);
       if (prev.length >= PICK_COUNT) return prev; // already have 3
@@ -44,23 +48,38 @@ export default function SignupPage() {
     });
   }
 
-  async function submit() {
+  async function submit(createNew = false) {
     setBusy(true);
     setError(null);
+    // Clear here too, so a failed "I'm new" shows only the error rather than
+    // stacking it on top of the conflict prompt that triggered it.
+    setConflict(false);
     try {
       // One endpoint: logs in if this name + icon key already exists, else
       // creates the account. `mode` tells us which happened. Interests are only
       // read on the signup path, so a returning member's saved topics are never
       // overwritten by whatever they tapped on the way through.
-      const res = await api<{ mode: "login" | "signup" }>("/auth/user", {
-        method: "POST",
-        body: JSON.stringify({
-          first_name: first,
-          last_name: last,
-          icons: picked,
-          interest_categories: interests,
-        }),
-      });
+      const res = await api<{ mode: "login" | "signup" | "conflict" }>(
+        "/auth/user",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            first_name: first,
+            last_name: last,
+            icons: picked,
+            interest_categories: interests,
+            create_new: createNew,
+          }),
+        },
+      );
+      // Someone already signs in under this name and these icons don't open it.
+      // Far more likely a mistap than a namesake, so ask instead of creating a
+      // second account and appearing to lose everything they saved.
+      if (res.mode === "conflict") {
+        setConflict(true);
+        setBusy(false);
+        return;
+      }
       setMode(res.mode);
       setStep("transition");
       // Cookie is set by the endpoint; let the transition play, then continue.
@@ -366,25 +385,52 @@ export default function SignupPage() {
 
             {error && <p className="mt-6 text-pop">{error}</p>}
 
-            <div className="mt-10 flex items-center justify-center gap-3">
-              <button
-                disabled={busy}
-                onClick={() => {
-                  setError(null);
-                  setStep("icons");
-                }}
-                className="rounded-2xl px-6 py-4 text-lg font-semibold text-muted hover:bg-white disabled:opacity-40"
-              >
-                Change icons
-              </button>
-              <button
-                disabled={busy}
-                onClick={submit}
-                className="rounded-2xl bg-accent px-10 py-4 text-xl font-semibold text-white shadow-card transition-transform enabled:hover:scale-[1.02] disabled:opacity-40"
-              >
-                {busy ? "…" : "Continue"}
-              </button>
-            </div>
+            {conflict ? (
+              <div className="mt-10">
+                <p role="status" className="font-display text-2xl font-bold text-ink">
+                  Those icons don&apos;t match.
+                </p>
+                <div className="mt-6 flex items-center justify-center gap-3">
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      setConflict(false);
+                      setStep("icons");
+                    }}
+                    className="rounded-2xl bg-accent px-10 py-4 text-xl font-semibold text-white shadow-card transition-transform enabled:hover:scale-[1.02] disabled:opacity-40"
+                  >
+                    Try again
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => void submit(true)}
+                    className="rounded-2xl px-6 py-4 text-lg font-semibold text-muted hover:bg-white disabled:opacity-40"
+                  >
+                    {busy ? "…" : "I'm new"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-10 flex items-center justify-center gap-3">
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setError(null);
+                    setStep("icons");
+                  }}
+                  className="rounded-2xl px-6 py-4 text-lg font-semibold text-muted hover:bg-white disabled:opacity-40"
+                >
+                  Change icons
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => void submit()}
+                  className="rounded-2xl bg-accent px-10 py-4 text-xl font-semibold text-white shadow-card transition-transform enabled:hover:scale-[1.02] disabled:opacity-40"
+                >
+                  {busy ? "…" : "Continue"}
+                </button>
+              </div>
+            )}
           </motion.section>
         )}
 

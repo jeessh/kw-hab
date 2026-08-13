@@ -22,6 +22,12 @@ class UserAuth(BaseModel):
     first_name: str
     last_name: str
     icons: list[str]
+    # Set only after the member has been told the name is already in use and has
+    # confirmed they are someone else. Without it, a name that already exists
+    # plus non-matching icons is treated as a mistap, not a new person — see
+    # auth_user. Names are deliberately not unique, so this escape hatch has to
+    # exist; it just must not be the default.
+    create_new: bool = False
     # Applied only when a new account is created (ignored on login).
     accessibility_prefs: list[str] = []
     interest_categories: list[str] = []
