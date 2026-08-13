@@ -51,6 +51,9 @@ export default function SignupPage() {
   async function submit(createNew = false) {
     setBusy(true);
     setError(null);
+    // Clear here too, so a failed "I'm new" shows only the error rather than
+    // stacking it on top of the conflict prompt that triggered it.
+    setConflict(false);
     try {
       // One endpoint: logs in if this name + icon key already exists, else
       // creates the account. `mode` tells us which happened. Interests are only

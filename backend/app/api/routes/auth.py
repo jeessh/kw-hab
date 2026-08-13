@@ -147,6 +147,10 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
     #    actually own, while the UI congratulates them. Memory is a stated top
     #    barrier for these members, so mistaps are expected, not exceptional.
     #    Hand the decision back to the UI; `create_new` is the confirmed override.
+    #    Note this counts same-named custom-password accounts too, where a
+    #    mistap can't be the explanation. Unreachable today (nothing calls
+    #    /auth/signup/user with a custom_password); revisit if that route is
+    #    ever wired up.
     if same_name and not body.create_new:
         return {"mode": "conflict"}
 
