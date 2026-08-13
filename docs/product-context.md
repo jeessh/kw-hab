@@ -143,7 +143,8 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | P-1 | **Schema changes can reach the live DB** | ✅ | Alembic added; `create_all` on startup removed, `schema.sql` deleted. Baseline revision is idempotent so it is safe against the hand-provisioned Supabase DB with no `stamp` step. |
 | P-2 | Attendance data survives event/account changes | ✅ | Events and members archive via `deleted_at`; un-saving flips `event_attendees.status`; the `attendees` relationships dropped `delete-orphan` so a stray `db.delete()` fails loudly instead of erasing history. Remaining hardening: the DB-level `ON DELETE CASCADE` is still in place as a latent path — see P-2a. |
 | P-2a | FK-level protection for attendance | ❌ | `event_attendees` FKs are still `ON DELETE CASCADE`. Unreachable from the API now that nothing hard-deletes, but a manual `DELETE` in the Supabase SQL editor would still destroy history. Switch to `RESTRICT`. |
-| P-3 | Rate limiting on auth | ❌ | None anywhere. Icon keyspace is ~59k combos and the credential is name+icons — exhaustible unauthenticated. |
+| P-3 | Rate limiting on auth | ✅ | Postgres-backed failure counters on all three sign-in routes (10/15min per identity, 200/15min per IP). Failures only, and success clears the identity key but deliberately not the shared IP key. Account **creation** is still uncapped — see P-3a. |
+| P-3a | Cap on account creation | ❌ | `/auth/user` can mint accounts without limit. Any cap low enough to matter risks cutting off a caregiver onboarding a group in one sitting, so it needs a chosen number. |
 | P-4 | Feed returns all events | 🟡 | `/events` defaults to 100, caps at 200 (`events.py:86`); the member feed requests no params (`app/events/page.tsx:16`) and sorts client-side, so past row 100 the "personalization never filters" invariant is silently false. |
 
 ### Accounts & auth

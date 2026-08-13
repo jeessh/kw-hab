@@ -71,6 +71,13 @@ export type Event = {
   accessibility_tags: string[];
   is_free: boolean;
   requires_signup: boolean;
+  /**
+   * Where registering happens. Only meaningful when `requires_signup` — a
+   * drop-in program is saved the same way either way. "external" means the
+   * member leaves for `registration_url`.
+   */
+  registration_mode: "internal" | "external";
+  registration_url?: string | null;
   cover_image_url?: string | null;
   images: EventImage[];
 };
