@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ApiError, api } from "@/lib/api";
 import { ALL_ICONS, emojiFor } from "@/lib/icons";
@@ -13,7 +13,24 @@ type Step = "name" | "interests" | "icons" | "confirm" | "transition";
 const PICK_COUNT = 3;
 
 export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupFlow />
+    </Suspense>
+  );
+}
+
+function SignupFlow() {
   const router = useRouter();
+  const params = useSearchParams();
+  // Where to land afterwards. Someone who pressed Save on a program is sent
+  // here mid-task; dropping them on the generic feed would mean finding it
+  // again. Same-origin paths only — an open redirect is a phishing primitive.
+  const nextParam = params.get("next");
+  const destination =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+      ? nextParam
+      : "/events";
   const [step, setStep] = useState<Step>("name");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -83,7 +100,7 @@ export default function SignupPage() {
       setMode(res.mode);
       setStep("transition");
       // Cookie is set by the endpoint; let the transition play, then continue.
-      window.setTimeout(() => router.replace("/events"), 1900);
+      window.setTimeout(() => router.replace(destination), 1900);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setError(

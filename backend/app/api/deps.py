@@ -51,6 +51,18 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+def get_optional_user(
+    request: Request, db: Session = Depends(get_db)
+) -> User | None:
+    """The signed-in member, or None. For endpoints on public pages, where a
+    signed-out visitor is a normal caller rather than an error."""
+    p = _payload(request)
+    if not p or p.get("role") != "user":
+        return None
+    user = db.get(User, uuid.UUID(p["sub"]))
+    return user if user and user.deleted_at is None else None
+
+
 def get_current_host(request: Request, db: Session = Depends(get_db)) -> Host:
     p = _payload(request)
     if not p or p.get("role") != "host":
