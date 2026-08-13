@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, api, type Event, type Session } from "@/lib/api";
 import { whenLabel } from "@/lib/time";
 import { AdminShell } from "@/components/AdminShell";
@@ -15,6 +15,7 @@ import {
 } from "@/components/AdminTable";
 import { EditEventModal } from "@/components/EditEventModal";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
 
 type Cost = "all" | "free" | "paid";
 type Owner = "all" | "mine";
@@ -33,13 +34,23 @@ export default function ProgramsPage() {
         </Link>
       }
     >
-      {(session) => <ProgramsTable session={session} />}
+      {(session) => (
+        // useSearchParams needs a boundary; without one this page opts out of
+        // static rendering entirely.
+        <Suspense fallback={null}>
+          <ProgramsTable session={session} />
+        </Suspense>
+      )}
     </AdminShell>
   );
 }
 
 function ProgramsTable({ session }: { session: Session }) {
   const router = useRouter();
+  const params = useSearchParams();
+  // Set once, on arrival from the create form. Held in state rather than read
+  // from the URL each render so the confirmation survives clearing the param.
+  const [justCreated] = useState<string | null>(() => params.get("created"));
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -87,6 +98,12 @@ function ProgramsTable({ session }: { session: Session }) {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Drop ?created= once it's been read, so a refresh or a back-navigation
+  // doesn't re-announce a program published minutes ago.
+  useEffect(() => {
+    if (justCreated) router.replace("/host/events");
+  }, [justCreated, router]);
 
   const canManage = (ev: Event) => isSuper || ev.host_id === myId;
 
@@ -166,6 +183,24 @@ function ProgramsTable({ session }: { session: Session }) {
         />
       </div>
 
+      {justCreated && (
+        <div
+          role="status"
+          className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3"
+        >
+          <span className="text-sm font-semibold text-emerald-900">
+            Published. Share it:
+          </span>
+          <CopyLinkButton eventId={justCreated} label="Copy link" />
+          <Link
+            href={`/events/${justCreated}`}
+            className="text-sm font-semibold text-accent underline underline-offset-2"
+          >
+            View the page
+          </Link>
+        </div>
+      )}
+
       <p role="status" aria-live="polite" className="mt-3 text-sm text-slate-600">
         {loading
           ? "Loading programs…"
@@ -240,18 +275,25 @@ function ProgramsTable({ session }: { session: Session }) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {canManage(ev) ? (
-                        <div className="flex gap-2">
-                          <Button onClick={() => setEditing(ev)}>
-                            Edit<span className="sr-only"> {ev.title}</span>
-                          </Button>
-                          <Button tone="danger" onClick={() => setDeleting(ev)}>
-                            Delete<span className="sr-only"> {ev.title}</span>
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-500">View only</span>
-                      )}
+                      {/* Copy is offered for every program, not just your own:
+                          the page is public either way, and cross-posting
+                          another agency's program is the directory working. */}
+                      <div className="flex flex-wrap gap-2">
+                        <CopyLinkButton eventId={ev.id} title={ev.title} />
+                        {canManage(ev) && (
+                          <>
+                            <Button onClick={() => setEditing(ev)}>
+                              Edit<span className="sr-only"> {ev.title}</span>
+                            </Button>
+                            <Button
+                              tone="danger"
+                              onClick={() => setDeleting(ev)}
+                            >
+                              Delete<span className="sr-only"> {ev.title}</span>
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
