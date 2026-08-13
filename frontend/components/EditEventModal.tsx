@@ -33,15 +33,25 @@ export function EditEventModal({
   const [startsAt, setStartsAt] = useState(toLocalInput(event.starts_at));
   const [isFree, setIsFree] = useState(event.is_free);
   const [requiresSignup, setRequiresSignup] = useState(event.requires_signup);
+  const [regMode, setRegMode] = useState<"internal" | "external">(
+    event.registration_mode ?? "internal",
+  );
+  const [regUrl, setRegUrl] = useState(event.registration_url ?? "");
   const [coverImageUrl, setCoverImageUrl] = useState(
     event.cover_image_url ?? "",
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const needsRegUrl = requiresSignup && regMode === "external";
+
   async function save() {
     if (!title.trim()) {
       setError("A title is required.");
+      return;
+    }
+    if (needsRegUrl && !regUrl.trim()) {
+      setError("Add the link to your sign-up page.");
       return;
     }
     setBusy(true);
@@ -57,6 +67,8 @@ export function EditEventModal({
           starts_at: startsAt ? new Date(startsAt).toISOString() : null,
           is_free: isFree,
           requires_signup: requiresSignup,
+          registration_mode: regMode,
+          registration_url: needsRegUrl ? regUrl.trim() : null,
           cover_image_url: coverImageUrl || null,
         }),
       });
@@ -140,6 +152,50 @@ export function EditEventModal({
           />
           Requires signup (otherwise it&apos;s drop-in)
         </label>
+
+        {/* Only shown when it changes anything — a drop-in program is saved the
+            same way whether or not the org runs its own registration. */}
+        {requiresSignup && (
+          <fieldset>
+            <legend className="text-lg text-ink">Where do people sign up?</legend>
+            <div className="mt-2 flex gap-4">
+              <label className="flex items-center gap-2 text-ink">
+                <input
+                  type="radio"
+                  name="edit-regmode"
+                  checked={regMode === "internal"}
+                  onChange={() => setRegMode("internal")}
+                  className="h-4 w-4"
+                />
+                Here
+              </label>
+              <label className="flex items-center gap-2 text-ink">
+                <input
+                  type="radio"
+                  name="edit-regmode"
+                  checked={regMode === "external"}
+                  onChange={() => setRegMode("external")}
+                  className="h-4 w-4"
+                />
+                On our own site
+              </label>
+            </div>
+            {regMode === "external" && (
+              <div className="mt-3">
+                <Field label="Link to your sign-up page" htmlFor="edit-regurl">
+                  <input
+                    id="edit-regurl"
+                    type="url"
+                    value={regUrl}
+                    onChange={(e) => setRegUrl(e.target.value)}
+                    placeholder="https://yourorg.ca/register"
+                    className="field-input"
+                  />
+                </Field>
+              </div>
+            )}
+          </fieldset>
+        )}
       </div>
 
       {error && (

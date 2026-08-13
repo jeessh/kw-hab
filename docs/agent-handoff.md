@@ -93,8 +93,10 @@ need a sibling hook, not that one.
   `is_admin = true` is a superadmin (any program, plus member and admin accounts).
 - `events`: category (**picked from `lib/categories.ts`, not free text** — the
   feed matches member interests against it), accessibility_tags text[]
-  (e.g. wheelchair_accessible, sensory_friendly, childcare_provided, free,
-  no_registration), host_id, times, cover_image_url, etc.
+  (e.g. wheelchair_accessible, sensory_friendly, childcare_provided, free),
+  host_id, times, cover_image_url, `deleted_at` (archive, never delete), plus
+  `requires_signup` × `registration_mode` (internal/external) + `registration_url`
+  — the four states the member CTA branches on.
 
 ## 4. How personalization actually works
 

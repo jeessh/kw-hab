@@ -8,6 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 
+# Where registering for a program actually happens.
+INTERNAL = "internal"
+EXTERNAL = "external"
+
 
 class Event(Base):
     __tablename__ = "events"
@@ -32,10 +36,19 @@ class Event(Base):
         ARRAY(Text), default=list  # text[] to match the DB; see user.icons note
     )
     is_free: Mapped[bool] = mapped_column(Boolean, default=True)
-    # True = member must sign up (creates an Attendance row); False = drop-in,
-    # no registration. Signup carries no extra form — the member's account
-    # (name, username, icons) already has everything the host needs.
+    # True = the member must register; False = drop-in, just save it. Where that
+    # registration happens is registration_mode's job.
     requires_signup: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "internal" — registering creates an Attendance row here; no extra form,
+    # the member's account already has what the host needs.
+    # "external" — registration lives in the agency's own system, so a member
+    # who must register leaves for registration_url and we count the click.
+    # Only meaningful when requires_signup is true; a drop-in program saves the
+    # same way either way.
+    registration_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, default=INTERNAL, server_default=text(f"'{INTERNAL}'")
+    )
+    registration_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -9,7 +9,12 @@ from app.core.storage import StorageError, upload_image
 from app.models.event import Event
 from app.models.event_image import EventImage
 from app.models.host import Host
-from app.schemas.event import EventCreate, EventOut, EventUpdate
+from app.schemas.event import (
+    EventCreate,
+    EventOut,
+    EventUpdate,
+    validate_registration,
+)
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -159,6 +164,15 @@ def update_event(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(event, field, value)
+    # Validate the merged row, not the patch: switching only `requires_signup`
+    # on an external program is what leaves it needing a link it doesn't have.
+    try:
+        validate_registration(
+            event.registration_mode, event.requires_signup, event.registration_url
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()
     db.refresh(event)
     return event

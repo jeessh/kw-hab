@@ -17,8 +17,9 @@ const ACCESS_OPTIONS: { slug: string; label: string }[] = [
   { slug: "sensory_friendly", label: "Sensory friendly" },
   { slug: "childcare_provided", label: "Childcare provided" },
   { slug: "transit_accessible", label: "Near transit" },
-  { slug: "no_registration", label: "Drop in, no registration" },
 ];
+// "Drop in, no registration" used to live in the list above, where it could
+// contradict the sign-up question below. Registration is one answer, asked once.
 
 export default function NewProgramPage() {
   return (
@@ -44,6 +45,8 @@ function NewProgramForm() {
   const [tags, setTags] = useState<Set<string>>(new Set());
   const [isFree, setIsFree] = useState(true);
   const [requiresSignup, setRequiresSignup] = useState(false);
+  const [regMode, setRegMode] = useState<"internal" | "external">("internal");
+  const [regUrl, setRegUrl] = useState("");
 
   const [showMore, setShowMore] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,7 +54,10 @@ function NewProgramForm() {
 
   // Category is required because the member feed sorts on it: an uncategorised
   // program can never match anyone's interests, so it quietly sinks.
-  const valid = title.trim() !== "" && category !== "";
+  // The link is required only in the one state that sends a member somewhere.
+  const needsRegUrl = requiresSignup && regMode === "external";
+  const valid =
+    title.trim() !== "" && category !== "" && (!needsRegUrl || regUrl.trim() !== "");
 
   function toggleTag(slug: string) {
     setTags((prev) => {
@@ -83,6 +89,8 @@ function NewProgramForm() {
           cover_image_url: coverUrl || null,
           is_free: isFree,
           requires_signup: requiresSignup,
+          registration_mode: regMode,
+          registration_url: needsRegUrl ? regUrl.trim() : null,
           accessibility_tags,
           gallery: gallery.map((url, i) => ({ url, sort_order: i })),
         }),
@@ -292,6 +300,44 @@ function NewProgramForm() {
                 />
               </div>
             </fieldset>
+
+            {/* Only asked when it changes anything: a drop-in program is saved
+                the same way whether or not you run your own registration. */}
+            {requiresSignup && (
+              <fieldset>
+                <legend className="text-sm font-medium text-slate-700">
+                  Where do people sign up?
+                </legend>
+                <div className="mt-2 flex gap-2">
+                  <Choice
+                    name="regmode"
+                    checked={regMode === "internal"}
+                    onChange={() => setRegMode("internal")}
+                    label="Here"
+                  />
+                  <Choice
+                    name="regmode"
+                    checked={regMode === "external"}
+                    onChange={() => setRegMode("external")}
+                    label="On our own site"
+                  />
+                </div>
+                {regMode === "external" && (
+                  <div className="mt-3">
+                    <Field label="Link to your sign-up page" htmlFor="e-regurl">
+                      <input
+                        id="e-regurl"
+                        type="url"
+                        value={regUrl}
+                        onChange={(e) => setRegUrl(e.target.value)}
+                        placeholder="https://yourorg.ca/register"
+                        className={inputClass}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </fieldset>
+            )}
           </div>
         )}
       </section>
@@ -314,7 +360,9 @@ function NewProgramForm() {
         </Link>
         {!valid && (
           <span className="text-xs text-slate-500">
-            Add a name and pick a topic to publish.
+            {needsRegUrl && !regUrl.trim()
+              ? "Add the link to your sign-up page to publish."
+              : "Add a name and pick a topic to publish."}
           </span>
         )}
       </div>
