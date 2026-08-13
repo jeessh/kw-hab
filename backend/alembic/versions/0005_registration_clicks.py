@@ -13,6 +13,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0005_clicks"
 down_revision: Union[str, None] = "0004_registration"
@@ -25,20 +26,20 @@ def upgrade() -> None:
         "event_registration_clicks",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "event_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("events.id"),
             nullable=False,
         ),
         # Null for a signed-out visitor — the event page is public.
         sa.Column(
             "user_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("users.id"),
             nullable=True,
         ),

@@ -27,7 +27,7 @@ export function EventActions({ event }: { event: Event }) {
     !!event.registration_url;
 
   const save = useCallback(
-    async (silent = false) => {
+    async (resuming = false) => {
       setBusy(true);
       setError(null);
       try {
@@ -36,13 +36,17 @@ export function EventActions({ event }: { event: Event }) {
       } catch (e) {
         // Not signed in: keep where they were and what they wanted, so coming
         // back doesn't mean finding the program again and pressing twice.
-        if (e instanceof ApiError && e.status === 401) {
-          if (silent) return;
+        // While resuming they have just signed in, so a 401 means the cookie
+        // didn't take — say so rather than bouncing them round the loop again.
+        if (e instanceof ApiError && e.status === 401 && !resuming) {
           const next = encodeURIComponent(`/events/${event.id}?save=1`);
           router.push(`/signup?next=${next}`);
           return;
         }
-        if (!silent) setError("That didn't save. Please try again.");
+        // Reported either way. A resumed save that fails silently is the worst
+        // case: they did the work of signing in and nothing tells them it was
+        // for nothing.
+        setError("That didn't save. Please try again.");
       } finally {
         setBusy(false);
       }
@@ -60,15 +64,15 @@ export function EventActions({ event }: { event: Event }) {
     router.replace(`/events/${event.id}`);
   }, [params, save, router, event.id]);
 
-  async function openRegistration() {
-    // Count first, then leave. Failing to record must never cost the member
-    // the link they asked for.
-    try {
-      await api(`/events/${event.id}/registration-click`, { method: "POST" });
-    } catch {
-      /* the click is ours to lose, not theirs */
-    }
+  function openRegistration() {
+    // Open synchronously, inside the click. Awaiting the tracking call first
+    // crosses a microtask boundary, which Safari treats as the end of the user
+    // gesture — the popup then gets blocked and the member goes nowhere.
     window.open(event.registration_url!, "_blank", "noopener,noreferrer");
+    // Fire-and-forget: the count is ours to lose, not theirs.
+    void api(`/events/${event.id}/registration-click`, {
+      method: "POST",
+    }).catch(() => {});
   }
 
   // Registering elsewhere is the point of the visit, so it leads. Saving stays
@@ -87,7 +91,7 @@ export function EventActions({ event }: { event: Event }) {
       {external && (
         <>
           <button
-            onClick={() => void openRegistration()}
+            onClick={openRegistration}
             className="rounded-2xl bg-accent px-8 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
           >
             Sign up on their site ↗

@@ -32,21 +32,23 @@ export function siteUrl(): string {
 }
 
 /**
- * One event, or null if it doesn't exist or the API is unreachable.
+ * One event, or null when the API says it genuinely isn't there.
  *
- * Null rather than throwing: a missing event is a 404 page and an unreachable
- * API shouldn't turn a shared link into a stack trace.
+ * Anything else — a 5xx, a network failure, the backend being unable to reach
+ * the database — throws, so the page renders a 500 rather than a 404. The
+ * difference matters: a 404 tells a crawler the program is permanently gone and
+ * invites de-indexing, and these URLs are what nonprofits put in social posts.
+ * A backend blip must not quietly delete a program from search results.
  */
 export async function fetchEvent(id: string): Promise<Event | null> {
-  try {
-    const res = await fetch(`${serverApiBase()}/events/${id}`, {
-      next: { revalidate: 300 },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as Event;
-  } catch {
-    return null;
+  const res = await fetch(`${serverApiBase()}/events/${id}`, {
+    next: { revalidate: 60 },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Event fetch failed: ${res.status}`);
   }
+  return (await res.json()) as Event;
 }
 
 /** Every live event, for the sitemap. Empty on failure — never a broken build. */

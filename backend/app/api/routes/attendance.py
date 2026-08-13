@@ -1,10 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
-
-from fastapi import Request
 
 from app.api.deps import get_current_user, get_db, get_optional_user
 from app.core.rate_limit import CLICK_LIMIT, client_key, enforce, record

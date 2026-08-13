@@ -12,6 +12,27 @@ type Step = "name" | "interests" | "icons" | "confirm" | "transition";
 
 const PICK_COUNT = 3;
 
+/**
+ * A same-origin path from `?next=`, or the feed.
+ *
+ * Resolved against our own origin and compared, rather than prefix-checked:
+ * `"/\\evil.com"` starts with a single "/" but the URL parser treats the
+ * backslash as a separator, so it resolves to `https://evil.com` — and Next's
+ * router does a real cross-origin navigation for it. Only the path, query and
+ * hash of a URL that stayed on our origin survive.
+ */
+function safeNext(raw: string | null): string {
+  if (!raw) return "/events";
+  try {
+    const here = new URL(window.location.href);
+    const target = new URL(raw, here.origin);
+    if (target.origin !== here.origin) return "/events";
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return "/events";
+  }
+}
+
 export default function SignupPage() {
   return (
     <Suspense fallback={null}>
@@ -23,14 +44,6 @@ export default function SignupPage() {
 function SignupFlow() {
   const router = useRouter();
   const params = useSearchParams();
-  // Where to land afterwards. Someone who pressed Save on a program is sent
-  // here mid-task; dropping them on the generic feed would mean finding it
-  // again. Same-origin paths only — an open redirect is a phishing primitive.
-  const nextParam = params.get("next");
-  const destination =
-    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-      ? nextParam
-      : "/events";
   const [step, setStep] = useState<Step>("name");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -100,6 +113,10 @@ function SignupFlow() {
       setMode(res.mode);
       setStep("transition");
       // Cookie is set by the endpoint; let the transition play, then continue.
+      // Resolved here rather than at render: safeNext reads window.location,
+      // which doesn't exist during the server pass. Someone who pressed Save on
+      // a program is mid-task, so they go back to it rather than to the feed.
+      const destination = safeNext(params.get("next"));
       window.setTimeout(() => router.replace(destination), 1900);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {

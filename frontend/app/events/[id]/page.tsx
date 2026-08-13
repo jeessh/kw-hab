@@ -10,7 +10,12 @@ import type { Event } from "@/lib/api";
 // Server-rendered on purpose. This is the page nonprofits paste into a Facebook
 // post and the only thing a search engine can index — both need the content in
 // the HTML, not behind a client fetch that runs after a cookie check.
-export const revalidate = 300;
+//
+// A short window because archiving a program has to take it off member-facing
+// surfaces promptly: while a page is cached its outbound registration button
+// still works, since that opens a URL the browser already holds rather than
+// asking the backend. A minute of that is tolerable; five was not.
+export const revalidate = 60;
 
 type Params = { params: Promise<{ id: string }> };
 
