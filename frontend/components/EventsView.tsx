@@ -19,6 +19,7 @@ import {
   useTransform,
 } from "framer-motion";
 import {
+  ApiError,
   api,
   logout,
   updateMe,
@@ -87,7 +88,8 @@ export function EventsView({
   eventsPromise,
   attendedPromise,
 }: {
-  initialMe: Me;
+  /** Null when nobody is signed in — browsing is open, saving is not. */
+  initialMe: Me | null;
   eventsPromise: Promise<Event[]>;
   attendedPromise: Promise<Event[]>;
 }) {
@@ -112,11 +114,19 @@ export function EventsView({
   const [srMessage, setSrMessage] = useState("");
 
   // Voice-accessibility prefs (seeded from initialMe, persisted on toggle).
-  const [ttsEnabled, setTtsEnabled] = useState(initialMe.tts_enabled);
-  const [voiceEnabled, setVoiceEnabled] = useState(
-    initialMe.voice_commands_enabled,
+  // A signed-out visitor still gets every accessibility mode; they just live
+  // for the session instead of on a profile. Withholding them until someone has
+  // an account would gate the app on the barrier it exists to remove.
+  const [ttsEnabled, setTtsEnabled] = useState(
+    initialMe?.tts_enabled ?? false,
   );
-  const [headEnabled, setHeadEnabled] = useState(initialMe.eye_tracking_enabled);
+  const [voiceEnabled, setVoiceEnabled] = useState(
+    initialMe?.voice_commands_enabled ?? false,
+  );
+  const [headEnabled, setHeadEnabled] = useState(
+    initialMe?.eye_tracking_enabled ?? false,
+  );
+  const signedIn = me !== null;
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
@@ -274,17 +284,50 @@ export function EventsView({
   // Latest profile, for handlers that must stay identity-stable.
   const meRef = useRef(me);
   meRef.current = me;
-  const attend = useCallback(async (ev: Event) => {
-    setSrMessage(`Saved ${ev.title}`);
-    if (!savedRef.current.has(ev.id)) {
+  // Read through a ref so `attend` keeps a stable identity for the memoized
+  // gesture handlers.
+  const signedInRef = useRef(signedIn);
+  signedInRef.current = signedIn;
+
+  const toSignIn = useCallback(
+    (ev: Event) => {
+      // Carry the program, so signing in returns to it and finishes the save
+      // rather than dropping someone back on the feed to find it again.
+      const next = encodeURIComponent(`/events/${ev.id}?save=1`);
+      router.push(`/signup?next=${next}`);
+    },
+    [router],
+  );
+
+  const attend = useCallback(
+    async (ev: Event) => {
+      if (savedRef.current.has(ev.id)) return;
+      if (!signedInRef.current) {
+        toSignIn(ev);
+        return;
+      }
+      setSrMessage(`Saved ${ev.title}`);
       setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
       try {
         await api(`/events/${ev.id}/attend`, { method: "POST" });
-      } catch {
-        /* keep the optimistic UI even if offline in the demo */
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          toSignIn(ev);
+          return;
+        }
+        // Roll the badge back. Leaving it would tell someone a program is
+        // saved when the server has no record of it — they find out by turning
+        // up to nothing, or by reloading and watching it vanish.
+        setSaved((prevSaved) => {
+          const next = new Set(prevSaved);
+          next.delete(ev.id);
+          return next;
+        });
+        setSrMessage(`Could not save ${ev.title}. Please try again.`);
       }
-    }
-  }, []);
+    },
+    [toSignIn],
+  );
 
   const saveCurrent = useCallback(async () => {
     const ev = feed[i];
@@ -790,27 +833,36 @@ export function EventsView({
         </div>
       )}
 
-      {/* log out button */}
-      <button
-        onClick={doLogout}
-        aria-label="Log out"
-        className="absolute right-[4.5rem] top-4 z-50 grid h-12 w-12 place-items-center rounded-full bg-white text-pop shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
+      {/* Log out, or the way in for someone who arrived from a shared link. */}
+      {signedIn ? (
+        <button
+          onClick={doLogout}
+          aria-label="Log out"
+          className="absolute right-[4.5rem] top-4 z-50 grid h-12 w-12 place-items-center rounded-full bg-white text-pop shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
         >
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <polyline points="16 17 21 12 16 7" />
-          <path d="M21 12H9" />
-        </svg>
-      </button>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <path d="M21 12H9" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          onClick={() => router.push("/signup")}
+          className="absolute right-[4.5rem] top-4 z-50 rounded-full bg-white px-5 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
+        >
+          Sign in
+        </button>
+      )}
 
       {/* accessibility settings */}
       <AccessibilityMenu
@@ -828,10 +880,17 @@ export function EventsView({
         listening={voiceEnabled && listening}
         interests={me?.interest_categories ?? []}
         onToggleInterest={toggleInterest}
+        signedIn={signedIn}
+        onSignIn={() => router.push("/signup")}
       />
 
       {/* Saved Events panel (opens via the settings gesture) */}
-      <SavedEvents me={me} reveal={settingsReveal} onClose={closeSettings} />
+      <SavedEvents
+        me={me}
+        reveal={settingsReveal}
+        onClose={closeSettings}
+        onSignIn={() => router.push("/signup")}
+      />
 
       {/* ---------------- EVENTS ---------------- */}
       <div
@@ -1343,6 +1402,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   listening,
   interests,
   onToggleInterest,
+  signedIn,
+  onSignIn,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -1358,6 +1419,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   listening: boolean;
   interests: string[];
   onToggleInterest: (label: string) => void;
+  signedIn: boolean;
+  onSignIn: () => void;
 }) {
   return (
     <div className="absolute right-4 top-4 z-50">
@@ -1392,6 +1455,18 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
           <h2 className="font-display text-lg font-bold text-ink">
             What you like
           </h2>
+          {/* Topics live on a profile, so there is nowhere to put them without
+              an account. The accessibility switches below need no account and
+              stay available either way. */}
+          {!signedIn ? (
+            <button
+              onClick={onSignIn}
+              className="mt-3 w-full rounded-2xl bg-accent px-6 py-3 text-lg font-semibold text-white"
+            >
+              Sign in to pick topics
+            </button>
+          ) : (
+          <>
           <p className="mt-0.5 text-sm text-muted">
             These come first in your programs.
           </p>
@@ -1422,6 +1497,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
               ? "Nothing chosen yet"
               : `${interests.length} chosen: ${interests.join(", ")}`}
           </p>
+          </>
+          )}
 
           <h2 className="mt-6 font-display text-lg font-bold text-ink">
             Accessibility

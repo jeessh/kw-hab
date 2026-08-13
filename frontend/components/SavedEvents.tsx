@@ -40,15 +40,18 @@ const startMs = (e: Event) =>
   e.starts_at ? new Date(e.starts_at).getTime() : 0;
 
 type Props = {
+  /** Null when signed out — there is no list to show, only a way to get one. */
   me: Me | null;
   reveal: number;
   onClose: () => void;
+  onSignIn: () => void;
 };
 
 export const SavedEvents = memo(function SavedEvents({
   me,
   reveal,
   onClose,
+  onSignIn,
 }: Props) {
   const open = reveal > 0;
   const [events, setEvents] = useState<Event[] | null>(null);
@@ -61,7 +64,9 @@ export const SavedEvents = memo(function SavedEvents({
   useEffect(() => {
     const justOpened = open && !prevOpen.current;
     prevOpen.current = open;
-    if (!justOpened) return;
+    // Nothing to fetch signed out; asking would just 401 and surface as an
+    // error, when the honest answer is "sign in first".
+    if (!justOpened || !me) return;
     setLoading(true);
     setError(false);
     api<Event[]>("/users/me/events")
@@ -163,7 +168,24 @@ export const SavedEvents = memo(function SavedEvents({
               Couldn’t load your events. Please refresh and try again.
             </p>
           )}
-          {events !== null && !loading && list.length === 0 && <EmptyAll />}
+          {!me ? (
+            <div className="mt-16 grid place-items-center gap-4 text-center">
+              <div className="text-5xl" aria-hidden>
+                🗓️
+              </div>
+              <p className="font-display text-2xl font-bold text-ink">
+                Sign in to keep events
+              </p>
+              <button
+                onClick={onSignIn}
+                className="rounded-2xl bg-accent px-8 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
+              >
+                Sign in
+              </button>
+            </div>
+          ) : (
+            events !== null && !loading && list.length === 0 && <EmptyAll />
+          )}
 
           {upcoming.length > 0 && (
             <Section icon="⏰" title="Upcoming Events" count={upcoming.length}>
