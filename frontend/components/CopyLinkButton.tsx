@@ -43,9 +43,18 @@ export function CopyLinkButton({
   }
 
   return (
-    <Button onClick={() => void copy()}>
-      {copied ? "Copied" : label}
-      {title && <span className="sr-only"> for {title}</span>}
-    </Button>
+    <>
+      <Button onClick={() => void copy()}>
+        {copied ? "Copied" : label}
+        {title && <span className="sr-only"> for {title}</span>}
+      </Button>
+      {/* Always mounted, text pushed in afterwards. A live region inserted with
+          its content already inside is unreliably announced; one that already
+          exists and then changes is not. The visible label flipping to "Copied"
+          is not itself an announcement. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {copied ? `Link copied${title ? ` for ${title}` : ""}` : ""}
+      </span>
+    </>
   );
 }

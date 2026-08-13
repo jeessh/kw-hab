@@ -51,6 +51,7 @@ function ProgramsTable({ session }: { session: Session }) {
   // Set once, on arrival from the create form. Held in state rather than read
   // from the URL each render so the confirmation survives clearing the param.
   const [justCreated] = useState<string | null>(() => params.get("created"));
+  const [announcement, setAnnouncement] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -100,9 +101,18 @@ function ProgramsTable({ session }: { session: Session }) {
   }, []);
 
   // Drop ?created= once it's been read, so a refresh or a back-navigation
-  // doesn't re-announce a program published minutes ago.
+  // doesn't re-announce a program published minutes ago. Everything else on the
+  // URL is preserved — stripping one param shouldn't discard the rest.
   useEffect(() => {
-    if (justCreated) router.replace("/host/events");
+    if (!justCreated) return;
+    setAnnouncement("Program published. A link to share it is at the top.");
+    const rest = new URLSearchParams(params);
+    rest.delete("created");
+    const query = rest.toString();
+    router.replace(query ? `/host/events?${query}` : "/host/events");
+    // params is a fresh object each render; justCreated is captured once and is
+    // the real trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justCreated, router]);
 
   const canManage = (ev: Event) => isSuper || ev.host_id === myId;
@@ -183,11 +193,15 @@ function ProgramsTable({ session }: { session: Session }) {
         />
       </div>
 
+      {/* Announced through the always-present region below rather than by
+          giving this box role="status" — a live region that appears with its
+          content already in it often isn't read out. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+
       {justCreated && (
-        <div
-          role="status"
-          className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3"
-        >
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3">
           <span className="text-sm font-semibold text-emerald-900">
             Published. Share it:
           </span>
