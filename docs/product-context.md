@@ -183,9 +183,9 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | R-1 | **`registration_mode` + `registration_url`** | ✅ | Both on `Event`; validation shared by create and update, and update checks the merged row. The link is required only in the external+signup state. |
 | R-2 | The four registration states drive distinct member behaviour | 🟡 | Done on the **event page** (`components/EventActions.tsx`): external sign-up leads with the outbound link, everything else saves. The one-card carousel still treats every state identically. |
 | R-2a | Member knows they are leaving the platform | ✅ | The destination hostname sits under the button — says "you are leaving" more plainly than a sentence about it, and costs four words. |
-| R-3 | Browse without an account; save is the gate | ❌ | Per §3.7. `/events` and the per-event page go public; the save action triggers sign-in and then **completes the save the member intended** — no plumbing for that exists (`/signup` hard-codes `router.replace("/events")`). |
+| R-3 | Browse without an account; save is the gate | ✅ | `/events` is open; `AuthGate` gone. Saving redirects to sign-in carrying the program, and the save completes on return. Accessibility modes work signed-out (session-only); topics and the saved list need an account. |
 | R-4 | Un-save | ❌ | `DELETE /events/{id}/attend` exists; no UI calls it. |
-| R-5 | Saves actually persist | 🟡 | `attend()` swallows every error (`EventsView.tsx:283`) — member sees "Saved ✓", server may have nothing. |
+| R-5 | Saves actually persist | ✅ | A failed save rolls the badge back and announces it, instead of claiming a program is saved that the server never recorded. |
 | R-6 | Capacity limits (incl. higher-needs allocation) | ❌ | No field; `attend_event` does no count check. |
 | R-7 | Reminder before the event | ❌ | Members have **no email/phone field at all**. Decided 2026-08-13: contact details are **optional and added after signup**, never required — icon sign-in stays contact-free. Schema is cheap; the mail sender and scheduler are the real cost and can land later. |
 | R-8 | Add to Google Calendar / .ics | ❌ | Nothing. |
@@ -213,7 +213,7 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | M-4 | Event postings trend | ❌ | `created_at` exists; nothing aggregates it. |
 | M-5 | **Per-event public URL** | ✅ | `/events/[id]`, server-rendered and public. |
 | M-6 | SEO / metadata / OG cards | 🟡 | Per-event title/description/canonical, OG + Twitter cards with the cover image, JSON-LD `Event`, `metadataBase`, sitemap and robots. Still missing: a favicon, and an OG image for pages with no cover. |
-| M-7 | Indexable event content | 🟡 | Event pages are in the HTML and in the sitemap. The `/events` carousel is still client-only behind the auth gate — see R-3. |
+| M-7 | Indexable event content | 🟡 | Event pages are in the HTML and in the sitemap, and `/events` is now reachable signed-out. The carousel itself is still client-rendered, so its content isn't in the server HTML — fine while the per-event pages carry indexing. |
 
 ### Accessibility
 
