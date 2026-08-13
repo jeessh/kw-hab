@@ -47,15 +47,19 @@ def upgrade() -> None:
         "ix_event_attendees_event", "event_attendees", ["event_id"]
     )
     # The feed and the per-member list both read "live rows only"; a partial
-    # index keeps those from scanning archived ones as the table grows.
-    op.execute(
-        "create index if not exists ix_events_live on events (starts_at) "
-        "where deleted_at is null"
+    # index keeps those from scanning archived ones as the table grows. Declared
+    # the same way in Event.__table_args__ so autogenerate doesn't propose
+    # dropping it on the next revision.
+    op.create_index(
+        "ix_events_live",
+        "events",
+        ["starts_at"],
+        postgresql_where=sa.text("deleted_at IS NULL"),
     )
 
 
 def downgrade() -> None:
-    op.execute("drop index if exists ix_events_live")
+    op.drop_index("ix_events_live", table_name="events")
     op.drop_index("ix_event_attendees_event", table_name="event_attendees")
     op.drop_column("event_attendees", "status")
     op.drop_column("users", "deleted_at")

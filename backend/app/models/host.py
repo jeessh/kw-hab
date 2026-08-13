@@ -17,7 +17,11 @@ class Host(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String)
-    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    # unique without index=True: the live DB enforces this with a column-level
+    # UNIQUE constraint (hosts_email_key), which already carries an index.
+    # index=True would additionally declare ix_hosts_email in metadata, which
+    # the database doesn't have — and autogenerate would keep proposing it.
+    email: Mapped[str] = mapped_column(String, unique=True)
     password_hash: Mapped[str] = mapped_column(String)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
