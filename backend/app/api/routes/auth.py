@@ -126,7 +126,7 @@ def login_user(
     )
     for user in candidates:
         if verify_password(body.password, user.password_hash):
-            clear_rate_limit(db, id_key, ip_key)
+            clear_rate_limit(db, id_key)
             set_auth_cookie(response, create_access_token(user.id, "user"))
             return {"id": str(user.id), "username": user.username, "role": "user"}
     record_failure(db, id_key, ip_key)
@@ -168,7 +168,7 @@ def auth_user(
         if user.auth_type == "icon" and verify_password(
             password, user.password_hash
         ):
-            clear_rate_limit(db, id_key, ip_key)
+            clear_rate_limit(db, id_key)
             set_auth_cookie(response, create_access_token(user.id, "user"))
             return {
                 "mode": "login",
@@ -250,7 +250,7 @@ def login_host(
     if not host or not verify_password(body.password, host.password_hash):
         record_failure(db, id_key, ip_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
-    clear_rate_limit(db, id_key, ip_key)
+    clear_rate_limit(db, id_key)
     set_auth_cookie(
         response, create_access_token(host.id, "host", is_admin=host.is_admin)
     )

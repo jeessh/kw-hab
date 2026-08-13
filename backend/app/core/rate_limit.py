@@ -6,26 +6,36 @@ routes need a ceiling on how fast someone can guess.
 
 Two deliberate design choices:
 
-* **Only failures count, and a success clears the counter.** A member who knows
-  their icons is never locked out, no matter how much noise someone else is
-  making against their name. It also means the identity budget can be small
-  without ever getting in a real member's way.
+* **Only failures count, and a success clears that identity's counter.** A
+  member who knows their icons is never locked out, no matter how much noise
+  someone else is making against their name. It also means the identity budget
+  can be small without ever getting in a real member's way.
+* **Success does NOT clear the IP counter.** Only the identity key is cleared.
+  Signing in successfully proves you hold one credential; it says nothing about
+  the other names being tried from the same address. Clearing the shared IP
+  bucket on success would let anyone with a single valid account — including one
+  they just created, since account creation is unthrottled — reset the sweep
+  protection at will by logging in periodically.
 * **The per-IP budget is generous.** Members frequently sign in from a shared
   facility — a community centre or a group home — so several people onboarding
-  together legitimately share one address. A tight IP limit would lock out a
-  whole room, which is exactly the population this platform exists to serve.
-  The per-identity budget is what actually stops a targeted guess; the IP budget
-  only stops someone sweeping across many names at once.
+  together legitimately share one address, and mistaps are expected rather than
+  exceptional. A tight IP limit would lock out a whole room, which is exactly
+  the population this platform exists to serve. Since the IP bucket now only
+  drains by expiry, it is set high enough that a real session can't reach it.
+  That costs little: the per-identity budget is what stops a targeted guess, and
+  it stays at 10 regardless of how much room the IP budget has. The IP limit's
+  only job is to make sweeping across many names at once impractical.
 """
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# Per name / email being signed in to.
+# Per name / email being signed in to. Cleared on a successful sign-in.
 IDENTITY_LIMIT = 10
-# Per source address, across every auth route.
-IP_LIMIT = 60
+# Per source address, across every auth route. Only ever drains by expiry, so
+# it has to clear a whole facility's worth of honest mistakes in one window.
+IP_LIMIT = 200
 WINDOW_SECONDS = 15 * 60
 
 _RETRY_MESSAGE = "Too many tries. Please wait a few minutes and try again."
@@ -102,7 +112,11 @@ def record_failure(db: Session, *keys: str) -> None:
 
 
 def clear(db: Session, *keys: str) -> None:
-    """Forget the failures for these keys, after a successful sign-in."""
+    """Forget the failures for these keys, after a successful sign-in.
+
+    Pass the identity key only — see the module docstring on why a success must
+    not drain the shared IP bucket.
+    """
     for key in keys:
         db.execute(
             text("delete from auth_rate_limits where key = :key"), {"key": key}
