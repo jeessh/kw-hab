@@ -90,7 +90,7 @@ function NewProgramForm() {
           is_free: isFree,
           requires_signup: requiresSignup,
           registration_mode: regMode,
-          registration_url: needsRegUrl ? regUrl.trim() : null,
+          registration_url: regUrl.trim() || null,
           accessibility_tags,
           gallery: gallery.map((url, i) => ({ url, sort_order: i })),
         }),

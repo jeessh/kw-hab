@@ -78,6 +78,19 @@ def _owns_or_admin(host: Host, event: Event) -> bool:
     return host.is_admin or event.host_id == host.id
 
 
+# NOT NULL on the events table, so a PATCH may omit them but never null them.
+_REQUIRED_FIELDS = frozenset(
+    {
+        "title",
+        "description",
+        "accessibility_tags",
+        "is_free",
+        "requires_signup",
+        "registration_mode",
+    }
+)
+
+
 # Eager loads for EventOut serialization (host_name + images); without these
 # each serialized row lazy-loads per-relation (N+1 through pgbouncer).
 _EVENT_OUT_OPTIONS = (joinedload(Event.host), selectinload(Event.images))
@@ -163,9 +176,19 @@ def update_event(
     if not _owns_or_admin(host, event):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
     for field, value in body.model_dump(exclude_unset=True).items():
+        # Every field on EventUpdate is Optional so it can be omitted, but an
+        # explicit null is a different thing from an omission — exclude_unset
+        # tracks presence, not value — and assigning it to a NOT NULL column
+        # would 500 at commit. Reject it as the bad request it is.
+        if value is None and field in _REQUIRED_FIELDS:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"{field} cannot be null"
+            )
         setattr(event, field, value)
     # Validate the merged row, not the patch: switching only `requires_signup`
     # on an external program is what leaves it needing a link it doesn't have.
+    # Nothing may touch the database between the loop above and this check —
+    # a query here would autoflush the unvalidated row into the transaction.
     try:
         validate_registration(
             event.registration_mode, event.requires_signup, event.registration_url

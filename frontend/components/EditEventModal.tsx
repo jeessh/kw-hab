@@ -68,7 +68,12 @@ export function EditEventModal({
           is_free: isFree,
           requires_signup: requiresSignup,
           registration_mode: regMode,
-          registration_url: needsRegUrl ? regUrl.trim() : null,
+          // Send what's in the field, not null-unless-currently-required. The
+          // field is hidden for a drop-in program, and forcing null here wiped
+          // the saved link on any unrelated edit — a title change would destroy
+          // it. An unused link costs nothing and comes back if sign-up is
+          // switched on again.
+          registration_url: regUrl.trim() || null,
           cover_image_url: coverImageUrl || null,
         }),
       });
