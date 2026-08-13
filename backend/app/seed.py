@@ -6,7 +6,7 @@ Run:  python -m app.seed
 from datetime import datetime, timedelta, timezone
 
 from app.core.security import hash_password
-from app.db.session import Base, SessionLocal, engine
+from app.db.session import SessionLocal
 from app.models.event import Event
 from app.models.event_image import EventImage
 from app.models.host import Host
@@ -157,7 +157,7 @@ def sample_events(now: datetime, kitchen: Host, admin: Host) -> list[Event]:
 
 
 def run() -> None:
-    Base.metadata.create_all(bind=engine)
+    # Schema comes from `alembic upgrade head`; this only inserts rows.
     db = SessionLocal()
     try:
         if db.query(Host).first():

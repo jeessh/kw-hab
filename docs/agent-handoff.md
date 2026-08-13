@@ -83,7 +83,7 @@ need a sibling hook, not that one.
   `GET|POST /hosts` and `PATCH|DELETE /hosts/{id}`.
 - `events.py`, `attendance.py`.
 
-### Data model (backend/app/models/, schema.sql)
+### Data model (backend/app/models/, backend/alembic/versions/)
 - `users`: id, first_name, last_name, username (firstname_lastname, NOT unique),
   password_hash, auth_type, **icons text[] UNIQUE**, created_at, plus
   `accessibility_prefs` / `interest_categories` (text[]) and the three

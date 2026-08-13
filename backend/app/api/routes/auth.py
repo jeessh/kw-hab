@@ -102,7 +102,12 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
 def login_user(body: UserLogin, response: Response, db: Session = Depends(get_db)):
     # Usernames are not unique, so check the password against every match.
     candidates = (
-        db.query(User).filter(User.username == body.username.strip().lower()).all()
+        db.query(User)
+        .filter(
+            User.username == body.username.strip().lower(),
+            User.deleted_at.is_(None),
+        )
+        .all()
     )
     for user in candidates:
         if verify_password(body.password, user.password_hash):
@@ -127,8 +132,13 @@ def auth_user(body: UserAuth, response: Response, db: Session = Depends(get_db))
 
     # 1) Existing record? The key is name + icons, so verify the credential
     #    against each same-named account (usernames alone aren't unique).
+    # Archived members stay in `same_name` — they still hold their
+    # (username, icons) slot, so the conflict check below has to see them — but
+    # they can't sign in.
     same_name = db.query(User).filter(User.username == username).all()
     for user in same_name:
+        if user.deleted_at is not None:
+            continue
         if user.auth_type == "icon" and verify_password(
             password, user.password_hash
         ):
@@ -222,6 +232,14 @@ def me(request: Request, db: Session = Depends(get_db)):
         return {"authenticated": False}
     role = payload.get("role")
     is_admin = payload.get("is_admin", False)
+    if role == "user":
+        # Same reasoning as the host branch below: the token outlives the
+        # account. Without this an archived member's session still reports
+        # authenticated here, so the UI lets them in and every real endpoint
+        # then 401s.
+        user = db.get(User, uuid.UUID(payload["sub"]))
+        if not user or user.deleted_at is not None:
+            return {"authenticated": False}
     if role == "host":
         # Tokens last a week and carry whatever is_admin was true at login, so a
         # demoted superadmin would keep seeing superadmin UI until it expired.

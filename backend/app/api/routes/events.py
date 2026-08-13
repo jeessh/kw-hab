@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_host, get_db
@@ -88,7 +89,9 @@ def list_events(
     db: Session = Depends(get_db),
 ):
     """Public discovery feed with needs + accessibility filters."""
-    query = db.query(Event).options(*_EVENT_OUT_OPTIONS)
+    query = db.query(Event).options(*_EVENT_OUT_OPTIONS).filter(
+        Event.deleted_at.is_(None)
+    )
     if category:
         query = query.filter(Event.category == category)
     if free is not None:
@@ -118,7 +121,7 @@ def get_event(event_id: uuid.UUID, db: Session = Depends(get_db)):
     event = (
         db.query(Event)
         .options(*_EVENT_OUT_OPTIONS)
-        .filter(Event.id == event_id)
+        .filter(Event.id == event_id, Event.deleted_at.is_(None))
         .first()
     )
     if not event:
@@ -150,7 +153,7 @@ def update_event(
     db: Session = Depends(get_db),
 ):
     event = db.get(Event, event_id)
-    if not event:
+    if not event or event.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
     if not _owns_or_admin(host, event):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
@@ -167,10 +170,14 @@ def delete_event(
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
+    """Archive the program. It leaves every member-facing surface immediately,
+    but the row and its attendance history stay — those counts are what the
+    organizer reports to funders, and a program members already attended is not
+    something a later mistake should be able to erase."""
     event = db.get(Event, event_id)
-    if not event:
+    if not event or event.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
     if not _owns_or_admin(host, event):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
-    db.delete(event)
+    event.deleted_at = func.now()
     db.commit()

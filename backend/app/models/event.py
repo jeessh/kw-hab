@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,7 +16,7 @@ class Event(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     host_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("hosts.id", ondelete="CASCADE"), index=True
+        UUID(as_uuid=True), ForeignKey("hosts.id", ondelete="CASCADE")
     )
     title: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
@@ -42,6 +43,25 @@ class Event(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Archived, not destroyed. Every read path filters on this; nothing deletes
+    # the row, because the attendance attached to it is what nonprofits report
+    # in grant applications.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Declared explicitly rather than via index=True so the names match what the
+    # live database actually has (`ix_events_host`, not SQLAlchemy's default
+    # `ix_events_host_id`). Autogenerate diffs metadata against the DB, so a
+    # mismatch here makes every future revision propose spurious index churn.
+    __table_args__ = (
+        Index("ix_events_host", "host_id"),
+        Index(
+            "ix_events_live",
+            "starts_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     host = relationship("Host", back_populates="events")
 
@@ -56,6 +76,8 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventImage.sort_order",
     )
-    attendees = relationship(
-        "Attendance", back_populates="event", cascade="all, delete-orphan"
-    )
+    # No delete-orphan here on purpose. Events are archived, never deleted, so
+    # this cascade would only ever fire from a future `db.delete(event)` — and
+    # then it would silently take the attendance history with it. Without it,
+    # such a call fails loudly on the NOT NULL event_id instead.
+    attendees = relationship("Attendance", back_populates="event")

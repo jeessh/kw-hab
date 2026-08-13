@@ -28,8 +28,15 @@ def get_me(host: Host = Depends(get_current_host)):
 
 
 def _event_counts(db: Session) -> dict[uuid.UUID, int]:
-    """Programs owned, per host, in one query (not one per row)."""
-    rows = db.query(Event.host_id, func.count(Event.id)).group_by(Event.host_id).all()
+    """Live programs owned, per host, in one query (not one per row). Archived
+    ones are excluded — this count warns a superadmin what a removal will
+    reassign, and reassigning an archived program isn't worth a warning."""
+    rows = (
+        db.query(Event.host_id, func.count(Event.id))
+        .filter(Event.deleted_at.is_(None))
+        .group_by(Event.host_id)
+        .all()
+    )
     return {host_id: count for host_id, count in rows}
 
 
