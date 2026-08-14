@@ -59,6 +59,7 @@ import {
 import { RegisterPrompt } from "@/components/member/RegisterPrompt";
 import {
   BucketStepper,
+  CardDropTab,
   SaveZone,
   WideEventCard,
 } from "@/components/member/FeedParts";
@@ -1108,13 +1109,17 @@ export function EventsView({
                   onPointerDown={() => startSaveHold(HOLD_TOUCH_MS)}
                   onPointerUp={cancelSaveHold}
                   onPointerCancel={cancelSaveHold}
-                  className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] border-[1.5px] border-[#9A9A9A] bg-white active:cursor-grabbing"
+                  className="absolute inset-0 cursor-grab active:cursor-grabbing"
                 >
-                  <WideEventCard event={current} saved={alreadySaved} />
-                  <HoldBadge progress={holdProgress} />
-                  <AnimatePresence>
-                    {confirming && <ConfirmSweep />}
-                  </AnimatePresence>
+                  {/* Behind the card so only the rounded tongue shows. */}
+                  <CardDropTab />
+                  <div className="relative h-full w-full overflow-hidden rounded-[28px] border-[1.5px] border-[#9A9A9A] bg-white">
+                    <WideEventCard event={current} saved={alreadySaved} />
+                    <HoldBadge progress={holdProgress} />
+                    <AnimatePresence>
+                      {confirming && <ConfirmSweep />}
+                    </AnimatePresence>
+                  </div>
                 </motion.div>
                 </motion.div>
               </motion.div>

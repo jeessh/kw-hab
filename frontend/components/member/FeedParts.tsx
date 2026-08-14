@@ -212,6 +212,35 @@ function PinIcon() {
   );
 }
 
+/* ---------------- the card's drop tab ---------------- */
+
+/**
+ * The blue handle hanging off the bottom of the card.
+ *
+ * It belongs to the card rather than to the save bar, and travels with it while
+ * it's dragged — that's what makes it read as this program's handle rather than
+ * as furniture the program happens to be near.
+ */
+export const CardDropTab = memo(function CardDropTab() {
+  return (
+    <div
+      aria-hidden
+      className="absolute -bottom-[38px] left-1/2 grid h-[76px] w-[204px] -translate-x-1/2 place-items-end justify-center rounded-b-[104px] pb-2.5"
+      style={{ background: CYAN }}
+    >
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M6 9l6 6 6-6"
+          stroke="#0B3A4A"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+});
+
 /* ---------------- save zone ---------------- */
 
 export const SaveZone = memo(
@@ -226,23 +255,6 @@ export const SaveZone = memo(
   >(function SaveZone({ active, count, onSave, onOpen }, ref) {
     return (
       <div className="absolute bottom-8 left-1/2 z-30 -translate-x-1/2">
-        {/* The tab that the card drops into, tucked behind the box. */}
-        <div
-          aria-hidden
-          className="absolute -top-[58px] left-1/2 grid h-[80px] w-[204px] -translate-x-1/2 place-items-start justify-center rounded-b-[104px] pt-3.5"
-          style={{ background: CYAN }}
-        >
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M6 9l6 6 6-6"
-              stroke="#0B3A4A"
-              strokeWidth="2.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-
         <div className="relative">
           <button
             ref={ref as never}
