@@ -44,21 +44,32 @@ export default function LandingPage() {
           Find community programs that fit you, all in one place.
         </p>
 
+        {/* No loading state: browsing needs no account, so the default answer
+            is right for everyone and is in the HTML immediately. Resolving the
+            session only ever upgrades it to a more specific destination. */}
         <div className="mt-10 flex min-h-[4.5rem] flex-col items-center">
-          {session === null ? (
-            <p className="font-display text-lg text-muted" role="status">
-              Loading…
-            </p>
-          ) : isMember ? (
+          {isMember ? (
             <Cta href="/events">Continue to your programs →</Cta>
           ) : isHost ? (
             <Cta href="/host/events">Go to your dashboard →</Cta>
           ) : (
-            <Cta href="/signup">Get started →</Cta>
+            // Looking comes first. Asking someone to make an account before
+            // they have seen a single program puts the hardest step — a name
+            // typed in, three icons remembered — in front of the reason they
+            // came. Signing in is what saving needs, and it is offered there.
+            <>
+              <Cta href="/events">See programs →</Cta>
+              <Link
+                href="/signup"
+                className="mt-4 text-lg font-semibold text-accent underline underline-offset-2"
+              >
+                Sign in
+              </Link>
+            </>
           )}
         </div>
 
-        {session !== null && !isHost && (
+        {!isHost && (
           <p className="mt-8 text-sm text-muted">
             Are you an organizer?{" "}
             <Link
