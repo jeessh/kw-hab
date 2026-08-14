@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Event } from "@/lib/api";
 import type { Bucket } from "@/lib/dimensions";
 import { repeatLabel } from "@/lib/recurrence";
+import { sessionLabel } from "@/lib/time";
 
 // Design tokens for the redesigned member surface.
 export const SKY = "#75DDF6"; // See more
@@ -26,10 +27,13 @@ export const BADGE = "#39CEF2";
 export const BucketStepper = memo(function BucketStepper({
   buckets,
   activeId,
+  progress,
   onJump,
 }: {
   buckets: Bucket[];
   activeId: string;
+  /** 0→1: how far along the rail the current program sits. */
+  progress: number;
   onJump: (index: number) => void;
 }) {
   // Hover and press live in state so the transform is a single number this
@@ -43,6 +47,11 @@ export const BucketStepper = memo(function BucketStepper({
   };
 
   if (buckets.length === 0) return null;
+  // The filled rail takes the colour of the section it has reached, so the bar
+  // and the ring you are standing on are visibly the same thing.
+  const fillColor =
+    buckets.find((b) => b.id === activeId)?.color ?? buckets[0].color;
+
   return (
     // Wider than the card, which is what the design does: the rail reads as the
     // span of the whole feed, with the card sitting inside it.
@@ -52,10 +61,28 @@ export const BucketStepper = memo(function BucketStepper({
             single bucket there is nothing to connect, and a rail running off
             to nowhere reads as missing content. */}
         {buckets.length > 1 && (
-          <div
-            aria-hidden
-            className="absolute left-7 right-7 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#D2D0DA]"
-          />
+          <>
+            <div
+              aria-hidden
+              className="absolute left-7 right-7 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#D2D0DA]"
+            />
+            {/* The rail fills as the member moves through the feed, so the
+                thing that already looked like a timeline now reads as one:
+                how far along you are, not just which stop you're at.
+
+                Width is measured against the rail, which is inset 1.75rem at
+                each end so it starts and stops at the centres of the first and
+                last rings — 3.5rem total. That is what makes the fill land
+                exactly on a dot when you arrive at it, rather than near it. */}
+            <div
+              aria-hidden
+              className="absolute left-7 top-1/2 h-2 -translate-y-1/2 rounded-full transition-[width,background-color] duration-300 ease-out motion-reduce:transition-none"
+              style={{
+                width: `calc((100% - 3.5rem) * ${progress})`,
+                background: fillColor,
+              }}
+            />
+          </>
         )}
         {buckets.map((bucket) => {
           const active = bucket.id === activeId;
@@ -148,6 +175,7 @@ export const WideEventCard = memo(function WideEventCard({
   onExpand: (event: Event) => void;
 }) {
   const repeats = repeatLabel(event.recurrence);
+  const session = sessionLabel(event);
   return (
     <div className="flex h-full gap-10 p-10">
       {/* Square, and as tall as the card allows — the design gives the photo
@@ -185,6 +213,12 @@ export const WideEventCard = memo(function WideEventCard({
                   the card has to say the date isn't the whole story. */}
               {repeats && (
                 <span className="text-muted">{` · ${repeats}`}</span>
+              )}
+              {/* Which session of the run this date is. It advances by itself:
+                  once this week's has finished the card moves to the next one
+                  and the count moves with it. */}
+              {session && (
+                <span className="text-muted">{` · ${session}`}</span>
               )}
             </span>
           )}

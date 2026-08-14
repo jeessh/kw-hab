@@ -27,7 +27,7 @@ import {
   type Me,
   type MePrefs,
 } from "@/lib/api";
-import { countdown } from "@/lib/time";
+import { countdown, isUpcoming } from "@/lib/time";
 import { useHold } from "@/lib/useHold";
 import { useTextToSpeech } from "@/lib/useTextToSpeech";
 import { useSpeechCommands } from "@/lib/useSpeechCommands";
@@ -247,14 +247,10 @@ export function EventsView({
   const interests = me?.interest_categories;
   const accessPrefs = me?.accessibility_prefs;
   const scoredFeed = useMemo(() => {
-    // A program that already happened is not a thing anyone can attend, and
-    // the design's "Today / Tomorrow" headings assume it's gone. Undated
-    // programs stay — "date to be announced" is still upcoming.
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const upcoming = events.filter(
-      (ev) => !ev.starts_at || new Date(ev.starts_at) >= todayStart,
-    );
+    // A program that already happened is not a thing anyone can attend.
+    // Measured from when it ends, so this week's session drops off the feed as
+    // it finishes and the next one takes its place — see lib/time.
+    const upcoming = events.filter(isUpcoming);
     return personalizedFeed(upcoming, {
       interests: interests ?? [],
       accessPrefs: accessPrefs ?? [],
@@ -326,6 +322,28 @@ export function EventsView({
   const activeBucket = current
     ? dimension.bucket(current)
     : { id: "", label: "", color: "#8A8AA0" };
+
+  /**
+   * How far along the rail the current program sits, 0→1.
+   *
+   * Measured against the dots rather than straight off `i / feed.length`,
+   * because the sections aren't the same size: Extend-A-Family has eight
+   * programs and Independent Living five, so a linear fill would sit between
+   * two rings at the moment the member is standing on one. This lands exactly
+   * on a ring when they reach it, and interpolates across the gap in between.
+   *
+   * Clamped at 1: the last ring is the end of the rail, so once they're in the
+   * final section the bar is full and stays full.
+   */
+  const railProgress = useMemo(() => {
+    if (buckets.length <= 1 || feed.length === 0) return 0;
+    const at = buckets.findIndex((b) => b.id === activeBucket.id);
+    if (at < 0) return 0;
+    const start = buckets[at].index;
+    const end = at + 1 < buckets.length ? buckets[at + 1].index : feed.length;
+    const within = clamp01((i - start) / Math.max(1, end - start));
+    return Math.min(1, (at + within) / (buckets.length - 1));
+  }, [buckets, activeBucket.id, i, feed.length]);
 
 
   // Read `saved` through a ref so `attend` (and everything built on it) keeps
@@ -1144,6 +1162,7 @@ export function EventsView({
                 <BucketStepper
                   buckets={buckets}
                   activeId={activeBucket.id}
+                  progress={railProgress}
                   onJump={setI}
                 />
               </>

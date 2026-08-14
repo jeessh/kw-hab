@@ -4,6 +4,7 @@ import { memo, useMemo } from "react";
 import type { Event } from "@/lib/api";
 import type { Dimension } from "@/lib/dimensions";
 import { repeatLabel } from "@/lib/recurrence";
+import { sessionLabel } from "@/lib/time";
 import { CYAN, SKY_DEEP } from "@/components/member/FeedParts";
 
 const TAG = "#F5C449"; // organization pill on the card image
@@ -73,6 +74,7 @@ export const GridCard = memo(function GridCard({
               <span className="inline-flex items-center gap-1.5">
                 <RepeatIcon />
                 {repeatLabel(event.recurrence)}
+                {sessionLabel(event) && ` · ${sessionLabel(event)}`}
               </span>
             )}
             {event.location && (

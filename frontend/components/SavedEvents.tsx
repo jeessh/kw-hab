@@ -3,15 +3,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Event, type Me } from "@/lib/api";
 import { oneCardPerProgram } from "@/lib/feed";
+import { isUpcoming } from "@/lib/time";
 import { emojiFor } from "@/lib/icons";
 import { FOCUSABLE } from "@/components/Modal";
 import { CYAN } from "@/components/member/FeedParts";
 import { GridCard, SearchBox } from "@/components/member/GridFeed";
-
-function isUpcoming(ev: Event): boolean {
-  if (!ev.starts_at) return true; // undated → still to come
-  return new Date(ev.starts_at).getTime() >= Date.now();
-}
 
 const startMs = (e: Event) =>
   e.starts_at ? new Date(e.starts_at).getTime() : 0;
