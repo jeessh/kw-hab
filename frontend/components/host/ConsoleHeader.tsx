@@ -90,7 +90,9 @@ export function ConsoleHeader({
               .catch(() => {})
               .then(() => router.replace("/host"));
           }}
-          className="mt-1 block w-full text-right text-sm font-medium text-muted underline underline-offset-2 hover:text-ink"
+          // 20px tall as a bare text link. Right-aligned padding keeps the
+          // dense header looking the same while giving it a real target.
+          className="mt-0.5 block w-full py-2 text-right text-sm font-medium text-muted underline underline-offset-2 hover:text-ink"
         >
           Sign out
         </button>

@@ -389,7 +389,7 @@ export const PostedEventCard = memo(function PostedEventCard({
           <button
             onClick={() => onDelete(event)}
             aria-label={`Delete ${event.title}`}
-            className="grid h-8 w-8 place-items-center rounded-full bg-[#F8C9D4] text-[#C2185B] transition-transform hover:scale-110"
+            className="grid h-9 w-9 place-items-center rounded-full bg-[#F8C9D4] text-[#C2185B] transition-transform hover:scale-110"
           >
             <TrashIcon />
           </button>
@@ -431,10 +431,15 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
+    // The glyph is 22px; the button is 36. The console is deliberately dense,
+    // but these sat at the icon's own size — under any minimum-target guidance
+    // — and Edit is two icons away from Delete on the same row. Density is a
+    // reason to keep them small, not a reason to make deleting a program a
+    // plausible outcome of aiming at editing one.
     <button
       onClick={onClick}
       aria-label={label}
-      className="text-ink transition-transform hover:scale-110"
+      className="grid h-9 w-9 place-items-center rounded-full text-ink transition-transform hover:scale-110 hover:bg-black/5"
     >
       {children}
     </button>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Event } from "@/lib/api";
 import type { Bucket } from "@/lib/dimensions";
 import { repeatLabel } from "@/lib/recurrence";
+import { sessionLabel } from "@/lib/time";
 
 // Design tokens for the redesigned member surface.
 export const SKY = "#75DDF6"; // See more
@@ -26,10 +27,13 @@ export const BADGE = "#39CEF2";
 export const BucketStepper = memo(function BucketStepper({
   buckets,
   activeId,
+  progress,
   onJump,
 }: {
   buckets: Bucket[];
   activeId: string;
+  /** 0→1: how far along the rail the current program sits. */
+  progress: number;
   onJump: (index: number) => void;
 }) {
   // Hover and press live in state so the transform is a single number this
@@ -43,6 +47,14 @@ export const BucketStepper = memo(function BucketStepper({
   };
 
   if (buckets.length === 0) return null;
+  // The filled rail takes the colour of the section it has reached, so the bar
+  // and the ring you are standing on are visibly the same thing.
+  const activeAt = Math.max(
+    0,
+    buckets.findIndex((b) => b.id === activeId),
+  );
+  const fillColor = buckets[activeAt].color;
+
   return (
     // Wider than the card, which is what the design does: the rail reads as the
     // span of the whole feed, with the card sitting inside it.
@@ -52,13 +64,41 @@ export const BucketStepper = memo(function BucketStepper({
             single bucket there is nothing to connect, and a rail running off
             to nowhere reads as missing content. */}
         {buckets.length > 1 && (
-          <div
-            aria-hidden
-            className="absolute left-7 right-7 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#D2D0DA]"
-          />
+          <>
+            <div
+              aria-hidden
+              className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#D2D0DA]"
+            />
+            {/* The rail fills as the member moves through the feed, so the
+                thing that already looked like a timeline now reads as one:
+                how far along you are, not just which stop you're at.
+
+                The 3.5rem baseline is a ring's width, and it is what makes the
+                first section count. The rings are opaque and sit on top of the
+                rail, so a bar measured from the centre of ring one spends its
+                first 28px hidden underneath that ring — the first two programs
+                moved it and nothing appeared to happen. Starting at the ring's
+                far edge means every step lands in a gap, where it can be seen.
+
+                Ring alignment survives: at progress k/(n-1) the bar ends on
+                ring k's far edge, and at 1 it fills the track completely. */}
+            <div
+              aria-hidden
+              className="absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full transition-[width,background-color] duration-300 ease-out motion-reduce:transition-none"
+              style={{
+                width: `calc(3.5rem + (100% - 3.5rem) * ${progress})`,
+                background: fillColor,
+              }}
+            />
+          </>
         )}
-        {buckets.map((bucket) => {
+        {buckets.map((bucket, at) => {
           const active = bucket.id === activeId;
+          // Sections already passed, and the one being read now, wash in their
+          // own colour. The bar alone couldn't say this: on the very first
+          // program it is a zero-width line hiding behind the first ring, so
+          // nothing on screen acknowledged that the member had started.
+          const reached = at <= activeAt;
           return (
             // The button is the circle and nothing else. It used to wrap this
             // whole column — circle, label and the dot beneath — so the target
@@ -83,7 +123,7 @@ export const BucketStepper = memo(function BucketStepper({
                 onPointerCancel={() => setPressed(null)}
                 onFocus={() => setHovered(bucket.id)}
                 onBlur={() => setHovered(null)}
-                className="grid h-14 w-14 place-items-center overflow-hidden rounded-full border-[4px] bg-white font-display text-base font-bold outline-none ring-offset-2 transition duration-150 ease-out focus-visible:ring-4 motion-reduce:transition-none"
+                className="grid h-14 w-14 place-items-center overflow-hidden rounded-full border-[4px] font-display text-base font-bold outline-none ring-offset-2 transition duration-150 ease-out focus-visible:ring-4 motion-reduce:transition-none"
                 // Transform inline rather than through hover: utilities. The
                 // selected ring needs a base scale that hover has to beat, and
                 // getting Tailwind to resolve that reliably against its own
@@ -91,6 +131,8 @@ export const BucketStepper = memo(function BucketStepper({
                 style={{
                   borderColor: bucket.color,
                   color: bucket.color,
+                  // A wash, not a fill — logos and initials still have to read.
+                  background: reached ? `${bucket.color}24` : "#FFFFFF",
                   transform: `scale(${scaleFor(bucket.id)})`,
                   boxShadow:
                     hovered === bucket.id
@@ -148,6 +190,7 @@ export const WideEventCard = memo(function WideEventCard({
   onExpand: (event: Event) => void;
 }) {
   const repeats = repeatLabel(event.recurrence);
+  const session = sessionLabel(event);
   return (
     <div className="flex h-full gap-10 p-10">
       {/* Square, and as tall as the card allows — the design gives the photo
@@ -185,6 +228,12 @@ export const WideEventCard = memo(function WideEventCard({
                   the card has to say the date isn't the whole story. */}
               {repeats && (
                 <span className="text-muted">{` · ${repeats}`}</span>
+              )}
+              {/* Which session of the run this date is. It advances by itself:
+                  once this week's has finished the card moves to the next one
+                  and the count moves with it. */}
+              {session && (
+                <span className="text-muted">{` · ${session}`}</span>
               )}
             </span>
           )}

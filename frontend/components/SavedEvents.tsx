@@ -2,15 +2,12 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Event, type Me } from "@/lib/api";
+import { oneCardPerProgram } from "@/lib/feed";
+import { isUpcoming } from "@/lib/time";
 import { emojiFor } from "@/lib/icons";
 import { FOCUSABLE } from "@/components/Modal";
 import { CYAN } from "@/components/member/FeedParts";
 import { GridCard, SearchBox } from "@/components/member/GridFeed";
-
-function isUpcoming(ev: Event): boolean {
-  if (!ev.starts_at) return true; // undated → still to come
-  return new Date(ev.starts_at).getTime() >= Date.now();
-}
 
 const startMs = (e: Event) =>
   e.starts_at ? new Date(e.starts_at).getTime() : 0;
@@ -110,9 +107,22 @@ export const SavedEvents = memo(function SavedEvents({
         )
       : all;
 
-    const upcoming = matching
-      .filter(isUpcoming)
-      .sort((a, b) => startMs(a) - startMs(b));
+    // One entry per program, at its next date — the same thing the feed shows.
+    //
+    // Saving a series-priced program enrols the member across the whole run, so
+    // one press of Save writes eight attendance rows. That is correct, and the
+    // counts are what the agencies put in grant applications. But this is the
+    // member's own list, and it read back "Upcoming Events 8" with the same
+    // soccer league eight times over, as though they had signed up eight times.
+    // The rows stay in the database; the list says what they signed up for.
+    //
+    // Collapsed after sorting, and separately per section: oneCardPerProgram
+    // keeps the first occurrence it meets, so on an unsorted list it could keep
+    // a date that has already passed and drop the program out of Upcoming
+    // altogether.
+    const upcoming = oneCardPerProgram(
+      matching.filter(isUpcoming).sort((a, b) => startMs(a) - startMs(b)),
+    );
 
     // Then the same programs again, grouped by topic — the design's second and
     // third rows. Someone looking for "that cooking thing" gets a shorter list
@@ -125,9 +135,9 @@ export const SavedEvents = memo(function SavedEvents({
       else byCategory.set(key, [ev]);
     }
 
-    const past = matching
-      .filter((e) => !isUpcoming(e))
-      .sort((a, b) => startMs(b) - startMs(a));
+    const past = oneCardPerProgram(
+      matching.filter((e) => !isUpcoming(e)).sort((a, b) => startMs(b) - startMs(a)),
+    );
 
     return { upcoming, byCategory: [...byCategory.entries()], past };
   }, [events, query]);
