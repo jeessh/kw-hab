@@ -21,8 +21,8 @@ type Nav = { href: string; label: string; superadminOnly?: boolean };
 
 const NAV: Nav[] = [
   { href: "/host/events", label: "Programs" },
-  { href: "/host/admins", label: "Admins", superadminOnly: true },
-  { href: "/host/members", label: "Members", superadminOnly: true },
+  { href: "/host/users", label: "Users", superadminOnly: true },
+  { href: "/host/admins", label: "Organizers", superadminOnly: true },
 ];
 
 export function AdminShell({

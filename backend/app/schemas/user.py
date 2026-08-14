@@ -21,6 +21,21 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class UserCreate(BaseModel):
+    """A superadmin setting up a member account for someone.
+
+    Staff already do this — the scoping notes describe support workers
+    registering on a member's behalf. The icons come back in the response so
+    they can be written down and handed over; there is no other way to recover
+    them.
+    """
+
+    first_name: str
+    last_name: str
+    # Omit to have the server pick an unused set.
+    icons: list[str] | None = None
+
+
 class UserUpdate(BaseModel):
     """Admin-editable fields on a user account."""
 

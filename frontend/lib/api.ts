@@ -180,3 +180,22 @@ export const deleteAdmin = (id: string) =>
   api(`/hosts/${id}`, { method: "DELETE" });
 
 export const listMembers = () => api<MemberAccount[]>("/users");
+
+/** Icons come back once — they're the password and can't be read again. */
+export const createMember = (body: { first_name: string; last_name: string }) =>
+  api<{ id: string; first_name: string; last_name: string; icons: string[] }>(
+    "/users",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+
+export const updateMember = (
+  id: string,
+  body: { first_name?: string; last_name?: string },
+) =>
+  api<MemberAccount>(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteMember = (id: string) =>
+  api(`/users/${id}`, { method: "DELETE" });

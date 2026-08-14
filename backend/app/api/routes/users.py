@@ -2,12 +2,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_admin
 from app.models.host import Host
 from app.models.user import User
-from app.schemas.user import UserOut, UserPrefsUpdate, UserUpdate
+from app.schemas.user import UserCreate, UserOut, UserPrefsUpdate, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -45,6 +46,58 @@ def list_users(
         .order_by(User.created_at.desc())
         .all()
     )
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_user(
+    body: UserCreate,
+    _: Host = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Create a member account on someone's behalf.
+
+    Deliberately does NOT set an auth cookie: the caller is a superadmin doing
+    admin work, and signing them in as the new member would end their session.
+    """
+    from app.api.routes.auth import _allocate_unique_icons, _make_username
+    from app.core.icons import credential, validate_icon_selection
+    from app.core.security import hash_password
+
+    username = _make_username(body.first_name, body.last_name)
+    if body.icons is not None:
+        try:
+            icons = validate_icon_selection(body.icons)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    else:
+        icons = _allocate_unique_icons(db)
+
+    user = User(
+        first_name=body.first_name.strip(),
+        last_name=body.last_name.strip(),
+        username=username,
+        password_hash=hash_password(credential(username, icons)),
+        auth_type="icon",
+        icons=icons,
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "That name and icon combination is already taken.",
+        )
+    db.refresh(user)
+    # Icons are the password and can't be read back later — return them once so
+    # they can be handed over.
+    return {
+        "id": str(user.id),
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "icons": user.icons,
+    }
 
 
 @router.patch("/{user_id}", response_model=UserOut)
