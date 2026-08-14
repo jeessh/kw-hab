@@ -1,97 +1,104 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { motion } from "framer-motion";
-import { api } from "@/lib/api";
+import { EventsView } from "@/components/EventsView";
+import { ApiError, api, type Event, type Me } from "@/lib/api";
 
-// /auth/me never 401s; it returns { authenticated:false } when there's no cookie.
-type Session = { authenticated: boolean; role?: string };
+/**
+ * The front door is the feed.
+ *
+ * There was a landing page here — a title, a tagline and a "See programs"
+ * button. It asked everyone to press one more thing to reach the only thing the
+ * site does, and for someone who finds navigation hard that is a whole extra
+ * decision in front of the content. Signing in lives in the corner of the feed,
+ * where it is needed, rather than being the price of admission.
+ */
+export default function HomePage() {
+  // The feed is public. GET /events needs no cookie, so browsing here is open
+  // to everyone — a link a nonprofit shares has to lead somewhere a stranger
+  // can actually use. Signing in is what saving requires, not what looking
+  // requires.
+  const [eventsPromise] = useState<Promise<Event[]>>(() => {
+    if (typeof window === "undefined") return Promise.resolve([]);
+    // Paginated, not a bare call: the API defaults to 100 and caps at 200, so
+    // a single request silently truncates the feed once the agencies get going
+    // — and "personalization sorts, never filters" quietly stops being true.
+    const p = (async () => {
+      const PAGE = 200;
+      const all: Event[] = [];
+      for (let offset = 0; offset < 5000; offset += PAGE) {
+        const page = await api<Event[]>(`/events?limit=${PAGE}&offset=${offset}`);
+        all.push(...page);
+        if (page.length < PAGE) break;
+      }
+      return all;
+    })();
+    p.catch(() => {});
+    return p;
+  });
+  // Already-saved programs, so the badge and count survive a reload. 401s for a
+  // signed-out visitor, which is not an error here — they simply have none.
+  const [attendedPromise] = useState<Promise<Event[]>>(() => {
+    if (typeof window === "undefined") return Promise.resolve([]);
+    const p = api<Event[]>("/users/me/events").catch(() => [] as Event[]);
+    return p;
+  });
 
-export default function LandingPage() {
-  const [session, setSession] = useState<Session | null>(null); // null = probing
-
+  // undefined = still resolving, null = signed out, Me = signed in. The three
+  // are distinct: rendering the feed before we know would flash the signed-out
+  // affordances at a member who is signed in.
+  const [me, setMe] = useState<Me | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const res = await api<Session>("/auth/me");
-        if (alive) setSession(res);
-      } catch {
-        if (alive) setSession({ authenticated: false });
-      }
-    })();
+    setFailed(false);
+    api<Me>("/users/me")
+      .then((res) => alive && setMe(res))
+      .catch((e) => {
+        if (!alive) return;
+        // Only a real 401 means "signed out". A network blip or a 5xx must not
+        // show a signed-in member the signed-out app — they'd find their saved
+        // list gone and a Sign in button where their profile was.
+        if (e instanceof ApiError && e.status === 401) setMe(null);
+        else setFailed(true);
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [attempt]);
 
-  const isMember = session?.authenticated && session.role === "user";
-  const isHost = session?.authenticated && session.role === "host";
-
-  return (
-    <main className="grid min-h-dvh place-items-center bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff,#EEEBF5_60%,#E6E1F2)] px-6 py-10">
-      <motion.section
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-2xl text-center"
-      >
-        <h1 className="font-display text-5xl font-extrabold leading-tight text-ink sm:text-6xl">
-          KW Community Compass
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-xl text-muted sm:text-2xl">
-          Find community programs that fit you, all in one place.
-        </p>
-
-        {/* No loading state: browsing needs no account, so the default answer
-            is right for everyone and is in the HTML immediately. Resolving the
-            session only ever upgrades it to a more specific destination. */}
-        <div className="mt-10 flex min-h-[4.5rem] flex-col items-center">
-          {isMember ? (
-            <Cta href="/events">Continue to your programs →</Cta>
-          ) : isHost ? (
-            <Cta href="/host/events">Go to your dashboard →</Cta>
-          ) : (
-            // Looking comes first. Asking someone to make an account before
-            // they have seen a single program puts the hardest step — a name
-            // typed in, three icons remembered — in front of the reason they
-            // came. Signing in is what saving needs, and it is offered there.
-            <>
-              <Cta href="/events">See programs →</Cta>
-              <Link
-                href="/signup"
-                className="mt-4 text-lg font-semibold text-accent underline underline-offset-2"
-              >
-                Sign in
-              </Link>
-            </>
-          )}
-        </div>
-
-        {!isHost && (
-          <p className="mt-8 text-sm text-muted">
-            Are you an organizer?{" "}
-            <Link
-              href="/host"
-              className="font-semibold text-accent underline underline-offset-2"
-            >
-              Log in as host
-            </Link>
+  if (failed) {
+    return (
+      <main className="grid h-dvh place-items-center bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff,#EEEBF5_60%,#E6E1F2)] px-6 text-center">
+        <div>
+          <p className="font-display text-2xl text-ink">
+            Couldn&apos;t reach the server.
           </p>
-        )}
-      </motion.section>
-    </main>
-  );
-}
+          <button
+            onClick={() => setAttempt((n) => n + 1)}
+            className="mt-5 rounded-2xl bg-accent px-8 py-3 text-lg font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
+          >
+            Try again
+          </button>
+        </div>
+      </main>
+    );
+  }
 
-function Cta({ href, children }: { href: string; children: React.ReactNode }) {
+  if (me === undefined) {
+    return (
+      <main className="grid h-dvh place-items-center bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff,#EEEBF5_60%,#E6E1F2)] text-muted">
+        <p className="font-display text-2xl">Loading programs…</p>
+      </main>
+    );
+  }
+
   return (
-    <Link
-      href={href}
-      className="inline-block rounded-2xl bg-accent px-10 py-4 text-2xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02] focus-visible:scale-[1.02]"
-    >
-      {children}
-    </Link>
+    <EventsView
+      initialMe={me}
+      eventsPromise={eventsPromise}
+      attendedPromise={attendedPromise}
+    />
   );
 }

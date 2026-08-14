@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { DIMENSIONS, type Dimension, type DimensionKey } from "@/lib/dimensions";
 
 /* ---------------- view toggle ---------------- */
@@ -30,7 +30,7 @@ export const ViewToggle = memo(function ViewToggle({
             aria-checked={active}
             aria-label={value === "carousel" ? "One at a time" : "Grid"}
             onClick={() => onChange(value)}
-            className={`grid h-9 w-11 place-items-center rounded-full transition-colors ${
+            className={`grid h-11 w-12 place-items-center rounded-full transition-colors ${
               active ? "bg-white shadow-sm" : "hover:bg-white/50"
             }`}
           >
@@ -144,7 +144,9 @@ export const SeeEventsBy = memo(function SeeEventsBy({
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
           aria-haspopup="menu"
-          className={`inline-flex items-center gap-3 font-display font-extrabold text-ink ${
+          // min-h so the grid's smaller heading still clears 44px. Text-sized
+          // buttons inherit the line box, and at text-3xl that came to 36.
+          className={`inline-flex min-h-[44px] items-center gap-3 font-display font-extrabold text-ink ${
             align === "left" ? "text-3xl" : "text-4xl sm:text-5xl"
           }`}
         >
@@ -210,19 +212,54 @@ function ChevronUp() {
 
 /* ---------------- account chip ---------------- */
 
+/**
+ * Who you are, and the way in or out.
+ *
+ * Signed out it signs you in. Signed in it opens a menu, because the previous
+ * behaviour was that pressing your own name signed you out on the spot — no
+ * confirmation, no label saying that's what it did, on a control someone might
+ * press just to check who they were logged in as. Sign-out is a deliberate
+ * choice now, and it says so.
+ */
 export const AccountChip = memo(function AccountChip({
   name,
-  onClick,
+  onSignIn,
+  onSignOut,
 }: {
   /** Null when signed out. */
   name: string | null;
-  onClick: () => void;
+  onSignIn: () => void;
+  onSignOut: () => void;
 }) {
   const signedIn = name !== null;
+  const [open, setOpen] = useState(false);
+
+  // Close on outside press or Escape, the same way the other menus here do.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-account-menu]")) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
+    <div className="relative" data-account-menu>
     <button
-      onClick={onClick}
-      className="inline-flex items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-white/70"
+      onClick={() => (signedIn ? setOpen((v) => !v) : onSignIn())}
+      aria-haspopup={signedIn ? "menu" : undefined}
+      aria-expanded={signedIn ? open : undefined}
+      className="inline-flex min-h-[44px] items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-white/70"
     >
       <span
         aria-hidden
@@ -243,6 +280,44 @@ export const AccountChip = memo(function AccountChip({
         </svg>
       </span>
       <span className="font-medium text-ink">{name ?? "Not Logged In"}</span>
+      {signedIn && (
+        <span aria-hidden className="text-muted">
+          ▾
+        </span>
+      )}
     </button>
+
+      {open && signedIn && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-2 min-w-[200px] overflow-hidden rounded-xl bg-white py-1 shadow-lift ring-1 ring-black/5"
+        >
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+            className="flex min-h-[48px] w-full items-center gap-2.5 px-4 text-left text-lg font-medium text-ink transition-colors hover:bg-[#F2F1F5]"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5M21 12H9" />
+            </svg>
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   );
 });

@@ -96,7 +96,11 @@ export const GridCard = memo(function GridCard({
         // offset, which only lined up while every card was the same height —
         // adding the date and how often it repeats made them all different, and
         // the bookmark drifted into the middle of the text.
-        className="absolute right-3 top-[164px] grid h-9 w-9 place-items-center rounded-lg transition-transform hover:scale-110"
+        // 44×44, not the icon's 36: this sits inside the card-sized "Open"
+        // button, so every pixel missed here opens the listing instead of
+        // saving — the one control on the card that undoes a save was also the
+        // easiest one to miss.
+        className="absolute right-1.5 top-[160px] grid h-11 w-11 place-items-center rounded-lg transition-transform hover:scale-110"
       >
         <BookmarkIcon filled={saved} />
       </button>

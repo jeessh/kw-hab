@@ -175,7 +175,7 @@ export default async function EventPage({ params }: Params) {
 
           <p className="mt-8 text-center">
             <Link
-              href="/events"
+              href="/"
               className="font-semibold text-accent underline underline-offset-2"
             >
               See more programs
