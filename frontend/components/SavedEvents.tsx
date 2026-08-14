@@ -1,39 +1,15 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Event, type Me } from "@/lib/api";
-import { categoryStyle } from "@/lib/categories";
+import { emojiFor } from "@/lib/icons";
 import { FOCUSABLE } from "@/components/Modal";
-
-// ---- date helpers ----
-const DAY = 86_400_000;
+import { CYAN } from "@/components/member/FeedParts";
+import { GridCard, SearchBox } from "@/components/member/GridFeed";
 
 function isUpcoming(ev: Event): boolean {
-  if (!ev.starts_at) return true; // undated → assume it's still to come
+  if (!ev.starts_at) return true; // undated → still to come
   return new Date(ev.starts_at).getTime() >= Date.now();
-}
-
-function fmtDate(iso?: string | null): string {
-  if (!iso) return "Date TBD";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Date TBD";
-  return d.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function countdownLabel(iso?: string | null): string {
-  if (!iso) return "Upcoming";
-  const ms = new Date(iso).getTime() - Date.now();
-  if (Number.isNaN(ms)) return "Upcoming";
-  const days = Math.round(ms / DAY);
-  if (days <= 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  if (days < 7) return `In ${days} days`;
-  const weeks = Math.round(days / 7);
-  return weeks === 1 ? "In 1 week" : `In ${weeks} weeks`;
 }
 
 const startMs = (e: Event) =>
@@ -45,6 +21,10 @@ type Props = {
   reveal: number;
   onClose: () => void;
   onSignIn: () => void;
+  /** Ids currently saved, so a row can be un-saved without leaving the list. */
+  saved: Set<string>;
+  onToggleSave: (event: Event) => void;
+  onOpen: (event: Event) => void;
 };
 
 export const SavedEvents = memo(function SavedEvents({
@@ -52,23 +32,21 @@ export const SavedEvents = memo(function SavedEvents({
   reveal,
   onClose,
   onSignIn,
+  saved,
+  onToggleSave,
+  onOpen,
 }: Props) {
   const open = reveal > 0;
   const [events, setEvents] = useState<Event[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [query, setQuery] = useState("");
 
-  // Refetch on each open so newly-attended events appear; stale data stays
-  // visible while it runs (loading/error only block when we have none).
   const prevOpen = useRef(false);
-  // Whose list is currently loaded, so a member arriving while the panel is
-  // already open still gets one — `justOpened` alone would never fire again.
   const loadedFor = useRef<string | null>(null);
   useEffect(() => {
     const justOpened = open && !prevOpen.current;
     prevOpen.current = open;
-    // Nothing to fetch signed out; asking would just 401 and surface as an
-    // error, when the honest answer is "sign in first".
     if (!open || !me) return;
     if (!justOpened && loadedFor.current === me.id) return;
     loadedFor.current = me.id;
@@ -80,9 +58,8 @@ export const SavedEvents = memo(function SavedEvents({
       .finally(() => setLoading(false));
   }, [open, me]);
 
-  // Dialog focus management (Modal.tsx-style): once fully open, move focus in,
-  // trap Tab, and restore on close. Gated on reveal >= 1 so a drag "peek"
-  // doesn't steal focus mid-gesture. Escape is handled globally by EventsView.
+  // Dialog focus management. Gated on reveal >= 1 so a drag "peek" doesn't
+  // steal focus mid-gesture. Escape is handled globally by EventsView.
   const fullyOpen = reveal >= 1;
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -90,8 +67,7 @@ export const SavedEvents = memo(function SavedEvents({
     if (!fullyOpen) return;
     restoreRef.current = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? panel)?.focus();
+    (panel?.querySelector<HTMLElement>(FOCUSABLE) ?? panel)?.focus();
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Tab" || !panel) return;
@@ -121,254 +97,236 @@ export const SavedEvents = memo(function SavedEvents({
     };
   }, [fullyOpen]);
 
+  const sections = useMemo(() => {
+    const all = events ?? [];
+    const q = query.trim().toLowerCase();
+    const matching = q
+      ? all.filter((ev) =>
+          [ev.title, ev.location, ev.host_name, ev.category]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(q),
+        )
+      : all;
+
+    const upcoming = matching
+      .filter(isUpcoming)
+      .sort((a, b) => startMs(a) - startMs(b));
+
+    // Then the same programs again, grouped by topic — the design's second and
+    // third rows. Someone looking for "that cooking thing" gets a shorter list
+    // to scan than the whole of what they've saved.
+    const byCategory = new Map<string, Event[]>();
+    for (const ev of upcoming) {
+      const key = ev.category || "Other";
+      const list = byCategory.get(key);
+      if (list) list.push(ev);
+      else byCategory.set(key, [ev]);
+    }
+
+    const past = matching
+      .filter((e) => !isUpcoming(e))
+      .sort((a, b) => startMs(b) - startMs(a));
+
+    return { upcoming, byCategory: [...byCategory.entries()], past };
+  }, [events, query]);
+
   if (!open) return null;
 
-  const list = events ?? [];
-  const upcoming = list
-    .filter(isUpcoming)
-    .sort((a, b) => startMs(a) - startMs(b));
-  const past = list
-    .filter((e) => !isUpcoming(e))
-    .sort((a, b) => startMs(b) - startMs(a));
+  const emoji = me?.icons?.[0] ? emojiFor(me.icons[0]) : "🔖";
 
   return (
     <div
       ref={panelRef}
       tabIndex={-1}
-      className="absolute inset-0 z-20 overflow-y-auto outline-none"
+      className="absolute inset-0 z-20 overflow-y-auto bg-white outline-none"
       style={{ opacity: reveal }}
       role="dialog"
       aria-modal="true"
       aria-label="Saved events"
     >
-      <div className="min-h-full bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff_0%,#EEEBF5_55%,#E6E1F2_100%)]">
-        <div className="mx-auto w-full max-w-5xl px-6 py-10">
-          {/* header */}
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="font-display text-4xl font-extrabold tracking-tight text-ink">
-                Saved Events
-              </h1>
-              {me && (
-                <p className="mt-1 text-muted">
-                  {me.first_name} {me.last_name}
-                </p>
-              )}
-            </div>
+      <div className="mx-auto w-full max-w-6xl px-8 py-10">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="flex items-center gap-3 font-display text-4xl font-extrabold tracking-tight text-ink">
+            {/* Their own sign-in icon, so the list is visibly theirs. */}
+            <span aria-hidden>{emoji}</span>
+            {me ? `${me.first_name}'s Saved Events` : "Saved Events"}
+          </h1>
+          <div className="flex items-center gap-3">
+            {me && <SearchBox value={query} onChange={setQuery} />}
             <button
               onClick={onClose}
               aria-label="Close saved events"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-lg text-ink shadow-card transition hover:scale-105 focus-visible:scale-105"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#C9C7D2] bg-white text-lg text-ink transition hover:scale-105"
             >
               ✕
             </button>
           </div>
-
-          {/* first-load states only; once we have data it stays visible on refetch */}
-          {loading && events === null && (
-            <p className="mt-16 text-center text-muted">Loading your events…</p>
-          )}
-          {error && events === null && (
-            <p role="alert" className="mt-16 text-center font-semibold text-pop">
-              Couldn’t load your events. Please refresh and try again.
-            </p>
-          )}
-          {!me ? (
-            <div className="mt-16 grid place-items-center gap-4 text-center">
-              <div className="text-5xl" aria-hidden>
-                🗓️
-              </div>
-              <p className="font-display text-2xl font-bold text-ink">
-                Sign in to keep events
-              </p>
-              <button
-                onClick={onSignIn}
-                className="rounded-2xl bg-accent px-8 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
-              >
-                Sign in
-              </button>
-            </div>
-          ) : (
-            events !== null && !loading && list.length === 0 && <EmptyAll />
-          )}
-
-          {upcoming.length > 0 && (
-            <Section icon="⏰" title="Upcoming Events" count={upcoming.length}>
-              {upcoming.map((e) => (
-                <SavedEventCard key={e.id} event={e} />
-              ))}
-            </Section>
-          )}
-
-          {past.length > 0 && (
-            <Section icon="✓" title="Past Events" count={past.length}>
-              {past.map((e) => (
-                <SavedEventCard key={e.id} event={e} past />
-              ))}
-            </Section>
-          )}
         </div>
+
+        {!me ? (
+          <div className="mt-24 grid place-items-center gap-4 text-center">
+            <div className="text-5xl" aria-hidden>
+              🗓️
+            </div>
+            <p className="font-display text-2xl font-bold text-ink">
+              Sign in to keep events
+            </p>
+            <button
+              onClick={onSignIn}
+              className="rounded-xl px-8 py-4 font-display text-xl font-semibold text-ink"
+              style={{ background: CYAN }}
+            >
+              Sign in
+            </button>
+          </div>
+        ) : (
+          <>
+            {loading && events === null && (
+              <p className="mt-16 text-center text-muted">
+                Loading your events…
+              </p>
+            )}
+            {error && events === null && (
+              <p role="alert" className="mt-16 text-center font-semibold text-pop">
+                Couldn&apos;t load your events. Please refresh and try again.
+              </p>
+            )}
+            {events !== null &&
+              !loading &&
+              sections.upcoming.length === 0 &&
+              sections.past.length === 0 && <EmptyAll searching={!!query} />}
+
+            {sections.upcoming.length > 0 && (
+              <Row
+                title="Upcoming Events"
+                count={sections.upcoming.length}
+                events={sections.upcoming}
+                saved={saved}
+                onOpen={onOpen}
+                onToggleSave={onToggleSave}
+              />
+            )}
+
+            {sections.byCategory.map(([category, evs]) => (
+              <Row
+                key={category}
+                title={category}
+                count={evs.length}
+                events={evs}
+                saved={saved}
+                onOpen={onOpen}
+                onToggleSave={onToggleSave}
+              />
+            ))}
+
+            {sections.past.length > 0 && (
+              <Row
+                title="Past Events"
+                count={sections.past.length}
+                events={sections.past}
+                saved={saved}
+                onOpen={onOpen}
+                onToggleSave={onToggleSave}
+              />
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 });
 
-/* ---------------- sections & cards ---------------- */
-
-function Section({
-  icon,
+/**
+ * One horizontally scrolling row of programs.
+ *
+ * The same card as the grid, so a program looks the same wherever it turns up —
+ * one thing to learn to recognise rather than three.
+ */
+function Row({
   title,
   count,
-  children,
+  events,
+  saved,
+  onOpen,
+  onToggleSave,
 }: {
-  icon: string;
   title: string;
   count: number;
-  children: React.ReactNode;
+  events: Event[];
+  saved: Set<string>;
+  onOpen: (event: Event) => void;
+  onToggleSave: (event: Event) => void;
 }) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  function scrollRight() {
+    scrollerRef.current?.scrollBy({ left: 320, behavior: "smooth" });
+  }
+
   return (
     <section className="mt-10">
-      <h2 className="flex items-center gap-2 font-display text-2xl font-bold text-ink">
-        <span aria-hidden>{icon}</span>
+      <h2 className="flex items-center gap-3 font-display text-2xl font-semibold text-ink">
         {title}
-        <span className="ml-1 rounded-full bg-white px-2.5 py-0.5 text-sm font-semibold text-muted shadow-sm">
+        <span
+          className="grid h-7 min-w-7 place-items-center rounded-full px-2 text-sm font-bold text-ink"
+          style={{ background: CYAN }}
+        >
           {count}
         </span>
       </h2>
-      <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {children}
+
+      <div className="relative mt-4">
+        <div
+          ref={scrollerRef}
+          className="flex gap-5 overflow-x-auto pb-2"
+          // Rows are their own scroll region; say so rather than leaving a
+          // keyboard user to discover it.
+          tabIndex={0}
+          role="group"
+          aria-label={`${title}, ${count} programs`}
+        >
+          {events.map((ev) => (
+            <div key={ev.id} className="w-[290px] shrink-0">
+              <GridCard
+                event={ev}
+                saved={saved.has(ev.id)}
+                onOpen={onOpen}
+                onToggleSave={onToggleSave}
+              />
+            </div>
+          ))}
+        </div>
+
+        {events.length > 3 && (
+          <button
+            onClick={scrollRight}
+            aria-label={`Show more ${title}`}
+            className="absolute -right-2 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-2xl text-ink shadow-card transition-transform hover:scale-105"
+          >
+            <span aria-hidden>›</span>
+          </button>
+        )}
       </div>
     </section>
   );
 }
 
-function SavedEventCard({ event, past }: { event: Event; past?: boolean }) {
-  const cat = categoryStyle(event.category);
+function EmptyAll({ searching }: { searching: boolean }) {
   return (
-    <article className="group flex flex-col overflow-hidden rounded-2xl bg-card shadow-card ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lift">
-      {/* colored banner: countdown for upcoming, "Attended" for past */}
-      <div
-        className="flex items-center justify-between px-4 py-1.5 text-sm font-semibold text-white"
-        style={{ backgroundColor: past ? "#8A8AA0" : cat.color }}
-      >
-        <span>{past ? "Attended" : countdownLabel(event.starts_at)}</span>
-        <span aria-hidden>{past ? "✓" : cat.emoji}</span>
-      </div>
-
-      {/* cover */}
-      <div className="relative h-40 w-full overflow-hidden bg-edge">
-        {event.cover_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={event.cover_image_url}
-            alt=""
-            draggable={false}
-            className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-              past ? "grayscale" : ""
-            }`}
-          />
-        ) : (
-          <div
-            className="grid h-full w-full place-items-center text-5xl"
-            style={{
-              background: `linear-gradient(135deg, ${cat.color}22, ${cat.color}05)`,
-            }}
-            aria-hidden
-          >
-            {cat.emoji}
-          </div>
-        )}
-        {event.category && (
-          <span className="absolute left-3 top-3 rounded-full bg-ink/80 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
-            {cat.emoji} {event.category}
-          </span>
-        )}
-      </div>
-
-      {/* body */}
-      <div className="flex flex-1 flex-col gap-2 p-5">
-        <h3 className="font-display text-lg font-bold leading-snug text-ink">
-          {event.title}
-        </h3>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
-          <span className="inline-flex items-center gap-1">
-            <CalendarIcon />
-            {fmtDate(event.starts_at)}
-          </span>
-          {event.location && (
-            <span className="inline-flex items-center gap-1">
-              <PinIcon />
-              {event.location}
-            </span>
-          )}
-        </div>
-        {event.description && (
-          <p className="line-clamp-3 text-sm text-muted">{event.description}</p>
-        )}
-        {event.host_name && (
-          <p className="mt-auto pt-1 text-xs font-medium text-muted/80">
-            by {event.host_name}
-          </p>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function EmptyAll() {
-  return (
-    <div className="mt-16 grid place-items-center gap-3 text-center">
+    <div className="mt-24 grid place-items-center gap-3 text-center">
       <div className="text-5xl" aria-hidden>
         🗓️
       </div>
       <p className="font-display text-2xl font-bold text-ink">
-        No saved events yet
+        {searching ? "Nothing matches that." : "No saved events yet"}
       </p>
-      <p className="max-w-sm text-muted">
-        Events you attend show up here. Hold a card to attend one.
-      </p>
+      {!searching && (
+        <p className="max-w-sm text-muted">
+          Programs you save show up here.
+        </p>
+      )}
     </div>
-  );
-}
-
-/* ---------------- icons ---------------- */
-
-function CalendarIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-      aria-hidden
-    >
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <path d="M16 2v4M8 2v4M3 10h18" />
-    </svg>
-  );
-}
-
-function PinIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-      aria-hidden
-    >
-      <path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0Z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
   );
 }

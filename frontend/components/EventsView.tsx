@@ -314,7 +314,19 @@ export function EventsView({
     const pending = authFor;
     setAuthFor(null);
     try {
-      setMe(await api<Me>("/users/me"));
+      const [profile, attended] = await Promise.all([
+        api<Me>("/users/me"),
+        // Their saved programs, which were unreadable a moment ago. Without
+        // this the count sits at zero and the list looks empty until a reload
+        // — someone signs in precisely to see this and finds nothing.
+        api<Event[]>("/users/me/events").catch(() => [] as Event[]),
+      ]);
+      setMe(profile);
+      setSaved((prevSaved) => {
+        const merged = new Set(prevSaved);
+        attended.forEach((ev) => merged.add(ev.id));
+        return merged;
+      });
     } catch {
       /* the cookie is set; the next read will pick the profile up */
     }
@@ -947,6 +959,9 @@ export function EventsView({
           setAuthFor(null);
           setAuthOpen(true);
         }}
+        saved={saved}
+        onToggleSave={toggleSave}
+        onOpen={setDetailFor}
       />
 
       {/* ---------------- EVENTS ---------------- */}
