@@ -11,7 +11,19 @@ export default function EventsPage() {
   // requires.
   const [eventsPromise] = useState<Promise<Event[]>>(() => {
     if (typeof window === "undefined") return Promise.resolve([]);
-    const p = api<Event[]>("/events");
+    // Paginated, not a bare call: the API defaults to 100 and caps at 200, so
+    // a single request silently truncates the feed once the agencies get going
+    // — and "personalization sorts, never filters" quietly stops being true.
+    const p = (async () => {
+      const PAGE = 200;
+      const all: Event[] = [];
+      for (let offset = 0; offset < 5000; offset += PAGE) {
+        const page = await api<Event[]>(`/events?limit=${PAGE}&offset=${offset}`);
+        all.push(...page);
+        if (page.length < PAGE) break;
+      }
+      return all;
+    })();
     p.catch(() => {});
     return p;
   });

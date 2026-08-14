@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { logout } from "@/lib/api";
 import { SearchBox } from "@/components/member/GridFeed";
 import { CYAN } from "@/components/host/PostedEvents";
 
@@ -25,6 +27,7 @@ export function ConsoleHeader({
   onQuery?: (v: string) => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const tabs = [
     { href: "/host/events", label: "Events", superOnly: false },
@@ -38,7 +41,7 @@ export function ConsoleHeader({
         {query !== undefined && onQuery && (
           <SearchBox value={query} onChange={onQuery} />
         )}
-        {tabs.length > 1 && (
+        {tabs.length > 0 && (
           <nav aria-label="Console sections" className="flex flex-wrap gap-2">
             {tabs.map((t) => {
               const active = pathname === t.href;
@@ -81,6 +84,16 @@ export function ConsoleHeader({
           </span>
           {organization || "Signed in"}
         </p>
+        <button
+          onClick={() => {
+            void logout()
+              .catch(() => {})
+              .then(() => router.replace("/host"));
+          }}
+          className="mt-1 block w-full text-right text-sm font-medium text-muted underline underline-offset-2 hover:text-ink"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   );

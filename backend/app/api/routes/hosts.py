@@ -9,6 +9,7 @@ from app.api.deps import get_current_host, get_db, require_admin
 from app.core.security import hash_password
 from app.models.event import Event
 from app.models.host import Host
+from app.models.invite import HostInvite
 from app.schemas.host import HostCreate, HostOut, HostUpdate, HostWithCountsOut
 
 router = APIRouter(prefix="/hosts", tags=["hosts"])
@@ -170,5 +171,10 @@ def delete_host(
         {Event.host_id: current.id}, synchronize_session=False
     )
     db.expire(host, ["events"])
+    # Invitations they issued reference them. The invite outlives its issuer
+    # perfectly well, so detach rather than block the removal or cascade it.
+    db.query(HostInvite).filter(HostInvite.invited_by == host.id).update(
+        {HostInvite.invited_by: None}, synchronize_session=False
+    )
     db.delete(host)
     db.commit()

@@ -95,6 +95,9 @@ export function payloadFrom(v: EventFormValues) {
     // more than the design asks.
     registration_mode: v.registrationUrl.trim() ? "external" : "internal",
     registration_url: v.registrationUrl.trim() || null,
+    // Built above and previously never sent — the array was a dead local, so
+    // every program went out with no tags at all.
+    accessibility_tags,
     // Blank means "no limit" and "any age", which is not the same as zero.
     capacity: v.capacity.trim() ? Number(v.capacity) : null,
     min_age: v.minAge.trim() ? Number(v.minAge) : null,

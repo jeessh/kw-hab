@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -62,6 +63,29 @@ def attend_event(
         existing.status = SAVED
         db.commit()
         return {"ok": True}
+    # Row-lock the event before counting, so two people racing for the last
+    # place can't both read "one left" and both get it.
+    if event.capacity is not None:
+        locked = (
+            db.query(Event)
+            .filter(Event.id == event_id)
+            .with_for_update()
+            .one()
+        )
+        taken = (
+            db.query(func.count(Attendance.user_id))
+            .filter(
+                Attendance.event_id == event_id,
+                Attendance.status == SAVED,
+            )
+            .scalar()
+            or 0
+        )
+        if locked.capacity is not None and taken >= locked.capacity:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This program is full.",
+            )
     db.add(Attendance(user_id=user.id, event_id=event_id, status=SAVED))
     try:
         db.commit()
@@ -106,7 +130,13 @@ def my_events(
             Attendance.status == SAVED,
             Event.deleted_at.is_(None),
         )
-        .options(joinedload(Event.host), selectinload(Event.images))
+        # attendees included: EventOut.saved_count reads it, and without this
+        # every saved program costs an extra query on each member page load.
+        .options(
+            joinedload(Event.host),
+            selectinload(Event.images),
+            selectinload(Event.attendees),
+        )
         .order_by(Event.starts_at.asc().nullslast(), Event.id.asc())
         .all()
     )

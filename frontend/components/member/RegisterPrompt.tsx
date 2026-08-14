@@ -12,11 +12,14 @@ import { CYAN } from "@/components/member/LoginOverlay";
  */
 export function RegisterPrompt({
   title,
+  external,
   onSkip,
   onRegister,
 }: {
   /** The program's name, for the accessible description. */
   title: string;
+  /** Registration happens on the organizer's own site. */
+  external?: boolean;
   onSkip: () => void;
   onRegister: () => void;
 }) {
@@ -33,7 +36,7 @@ export function RegisterPrompt({
           id="register-prompt-title"
           className="mt-1 font-display text-4xl font-extrabold text-ink"
         >
-          Register for this event?
+          {external ? "Sign up on their site?" : "Register for this event?"}
         </h2>
         <p className="sr-only">{title}</p>
 
@@ -49,7 +52,8 @@ export function RegisterPrompt({
             className="inline-flex items-center gap-2 rounded-lg px-5 py-3 font-display text-lg font-semibold text-ink transition-transform hover:scale-[1.03]"
             style={{ background: CYAN }}
           >
-            <span aria-hidden>✓</span> Register for event
+            <span aria-hidden>✓</span>{" "}
+            {external ? "Sign up on their site ↗" : "Register for event"}
           </button>
         </div>
       </div>

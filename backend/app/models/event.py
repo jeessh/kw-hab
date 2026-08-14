@@ -8,7 +8,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    String,
     Text,
     func,
 )
@@ -32,12 +31,12 @@ class Event(Base):
     host_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("hosts.id", ondelete="CASCADE")
     )
-    title: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, default="")
     # Extra details shown under the description in the detail popup. Kept apart
     # from description so the standardized pitch every listing has stays short.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    category: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
     # What kind of thing it is, as distinct from what it is about: category is
     # the topic (Cooking), activity_type is the shape (a class, a drop-in
     # social, an outing). Picked from lib/activities.ts, same as category —
@@ -48,7 +47,7 @@ class Event(Base):
     activity_type: Mapped[str | None] = mapped_column(
         Text, nullable=True, index=True
     )
-    location: Mapped[str | None] = mapped_column(String, nullable=True)
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Coordinates for proximity sorting. Null means the address was never
     # geocoded, and such a program simply doesn't take part in a distance sort
     # rather than being hidden by one.
@@ -91,7 +90,7 @@ class Event(Base):
         Text, nullable=False, default=INTERNAL, server_default=text(f"'{INTERNAL}'")
     )
     registration_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

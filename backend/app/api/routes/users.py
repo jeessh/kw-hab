@@ -107,12 +107,41 @@ def update_user(
     _: Host = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    from app.api.routes.auth import _make_username
+    from app.core.icons import credential
+    from app.core.security import hash_password
+
     user = db.get(User, user_id)
     if not user or user.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
-    db.commit()
+
+    # The name is half the credential. Sign-in derives both the lookup key and
+    # the password from it (see auth_user), so changing a name without
+    # recomputing them locks the member out of their own account — they type
+    # the corrected name, it resolves to a username no row has, and they are
+    # treated as a stranger with their saved programs stranded. Fixing a typo
+    # must not cost somebody their account.
+    username = _make_username(user.first_name, user.last_name)
+    if username != user.username:
+        if user.auth_type != "icon":
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This account signs in with a password; renaming it would "
+                "lock it out.",
+            )
+        user.username = username
+        user.password_hash = hash_password(credential(username, user.icons))
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Another member already uses that name with the same icons.",
+        )
     db.refresh(user)
     return user
 

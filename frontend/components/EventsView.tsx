@@ -402,6 +402,13 @@ export function EventsView({
   const saveCurrent = useCallback(async () => {
     const ev = feed[i];
     if (!ev) return;
+    // Only celebrate a save that actually happened. Signed out this bounces to
+    // the sign-in overlay, and already-saved is a no-op — sweeping "Saved!"
+    // across the card in either case tells the member something untrue.
+    if (!signedInRef.current || savedRef.current.has(ev.id)) {
+      void attend(ev);
+      return;
+    }
     setConfirming(true);
     void attend(ev);
     window.setTimeout(() => setConfirming(false), 1300);
@@ -810,13 +817,16 @@ export function EventsView({
         target &&
         (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
           target.isContentEditable ||
-          target.closest('[role="menu"]'))
+          target.closest('[role="menu"]') ||
+          target.closest('[role="dialog"]'))
       ) {
         return;
       }
       // The grid has no focused card, so the card actions have nothing to act
       // on. Firing them anyway saved programs nobody had seen.
       if (viewMode !== "carousel") return;
+      // Any overlay owns the keyboard while it's up.
+      if (authOpen || registerFor || detailFor || a11yOpen || dimOpen) return;
       if (flying) return;
       switch (e.key) {
         case "ArrowRight":
@@ -1180,7 +1190,13 @@ export function EventsView({
             setAuthFor(null);
           }}
           onSignedIn={() => void handleSignedIn()}
-          onSignUp={() => router.push("/signup")}
+          onSignUp={() => {
+            // Carry the program through sign-up too, not just sign-in.
+            const next = authFor
+              ? `?next=${encodeURIComponent(`/events/${authFor.id}?save=1`)}`
+              : "";
+            router.push(`/signup${next}`);
+          }}
         />
       )}
 
@@ -1200,11 +1216,26 @@ export function EventsView({
       {registerFor && (
         <RegisterPrompt
           title={registerFor.title}
+          external={
+            registerFor.requires_signup &&
+            registerFor.registration_mode === "external" &&
+            !!registerFor.registration_url
+          }
           onSkip={() => setRegisterFor(null)}
           onRegister={() => {
             const ev = registerFor;
             setRegisterFor(null);
             void attend(ev);
+            // If registration lives on the organizer's site, saving is not
+            // registering — send them there too, or they turn up unregistered
+            // having pressed a button that said Register.
+            if (
+              ev.requires_signup &&
+              ev.registration_mode === "external" &&
+              ev.registration_url
+            ) {
+              openRegistration(ev);
+            }
           }}
         />
       )}
