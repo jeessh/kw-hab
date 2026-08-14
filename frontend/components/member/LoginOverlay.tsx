@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ApiError, api } from "@/lib/api";
 import { ALL_ICONS, emojiFor } from "@/lib/icons";
 
@@ -136,7 +137,13 @@ export function LoginOverlay({
                 already hold keys drawn from all of it — trimming it to fit the
                 frame would lock most of them out and cut the keyspace from
                 ~59,000 to 1,320. Exactly two rows, then it scrolls. */}
-            <div className="mt-6 grid max-h-[152px] grid-cols-6 gap-3 overflow-y-auto">
+            {/* The padding is the order badge's room to hang over a tile's
+                corner. This is a scroll container, and a box that scrolls in
+                one axis clips the other too — so the badge was being sliced off
+                along the top row and the right-hand column, which is where the
+                first icon someone picks tends to be. The negative margin keeps
+                the tiles where they were. */}
+            <div className="mt-6 -mx-2 grid max-h-[164px] grid-cols-6 gap-3 overflow-y-auto px-2 pt-2">
               {ALL_ICONS.map((slug) => {
                 const order = picked.indexOf(slug);
                 const isPicked = order !== -1;
@@ -201,6 +208,22 @@ export function LoginOverlay({
         >
           Sign up
         </button>
+
+        {/* The way into the staff console.
+            It used to live on the landing page, and the landing page is gone —
+            which left the console reachable only by typing the URL. Here rather
+            than on the feed itself: this is the sign-in surface, so it is where
+            somebody who came to sign in as an organizer will be looking, and
+            the feed stays free of chrome that members have no use for. */}
+        <p className="mt-5 text-sm text-muted">
+          Are you an organizer?{" "}
+          <Link
+            href="/host"
+            className="font-semibold text-accent underline underline-offset-2"
+          >
+            Staff sign-in
+          </Link>
+        </p>
 
         {error && (
           <p role="alert" className="mt-4 font-semibold text-pop">
