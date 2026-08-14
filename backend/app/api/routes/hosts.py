@@ -54,6 +54,7 @@ def list_hosts(_: Host = Depends(require_admin), db: Session = Depends(get_db)):
             name=h.name,
             email=h.email,
             is_admin=h.is_admin,
+            logo_url=h.logo_url,
             created_at=h.created_at,
             event_count=counts.get(h.id, 0),
         )
@@ -75,6 +76,7 @@ def create_host(
         email=email,
         password_hash=hash_password(body.password),
         is_admin=body.is_admin,
+        logo_url=body.logo_url,
     )
     db.add(host)
     try:
@@ -129,6 +131,10 @@ def update_host(
         host.name = fields["name"]  # already trimmed and non-blank by the schema
     if "is_admin" in fields:
         host.is_admin = fields["is_admin"]
+    # Null means "leave it alone" here, per the rule above, so an empty string
+    # is how a logo gets removed.
+    if "logo_url" in fields:
+        host.logo_url = fields["logo_url"] or None
 
     db.commit()
     db.refresh(host)

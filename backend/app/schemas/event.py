@@ -45,6 +45,7 @@ class EventBase(BaseModel):
     title: str
     description: str = ""
     category: str | None = None
+    activity_type: str | None = None
     location: str | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -71,6 +72,7 @@ class EventUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     category: str | None = None
+    activity_type: str | None = None
     location: str | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -88,5 +90,6 @@ class EventOut(EventBase):
     id: uuid.UUID
     host_id: uuid.UUID
     host_name: str = ""
+    host_logo_url: str | None = None
     images: list[EventImageOut] = []
     created_at: datetime

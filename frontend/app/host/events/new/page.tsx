@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, api, apiMessage } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
+import { ACTIVITY_TYPES } from "@/lib/activities";
 import { AdminShell } from "@/components/AdminShell";
 import { Button, Field, inputClass } from "@/components/AdminTable";
 import { ImageDrop } from "@/components/ImageDrop";
@@ -43,6 +44,7 @@ function NewProgramForm() {
   const [coverUrl, setCoverUrl] = useState("");
   const [gallery, setGallery] = useState<string[]>([]);
   const [tags, setTags] = useState<Set<string>>(new Set());
+  const [activityType, setActivityType] = useState("");
   const [isFree, setIsFree] = useState(true);
   const [requiresSignup, setRequiresSignup] = useState(false);
   const [regMode, setRegMode] = useState<"internal" | "external">("internal");
@@ -84,6 +86,7 @@ function NewProgramForm() {
           title: title.trim(),
           description: description.trim(),
           category,
+          activity_type: activityType || null,
           location: location.trim() || null,
           starts_at: startsAt ? new Date(startsAt).toISOString() : null,
           cover_image_url: coverUrl || null,
@@ -279,6 +282,36 @@ function NewProgramForm() {
                     }`}
                   >
                     {opt.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend className="text-sm font-medium text-slate-700">
+                What kind of thing is it?
+              </legend>
+              <p className="mt-0.5 text-xs text-slate-500">
+                The shape of it, not the subject — members can browse by this.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {ACTIVITY_TYPES.map((a) => (
+                  <button
+                    key={a.label}
+                    type="button"
+                    onClick={() =>
+                      setActivityType((cur) =>
+                        cur === a.label ? "" : a.label,
+                      )
+                    }
+                    aria-pressed={activityType === a.label}
+                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      activityType === a.label
+                        ? "border-accent bg-accent text-white"
+                        : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span aria-hidden>{a.emoji}</span> {a.label}
                   </button>
                 ))}
               </div>

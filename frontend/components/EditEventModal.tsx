@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, type Event } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import { ImageDrop } from "@/components/ImageDrop";
+import { ACTIVITY_TYPES } from "@/lib/activities";
 
 /** Turn an ISO timestamp into a value the datetime-local input accepts. */
 function toLocalInput(iso?: string | null): string {
@@ -29,6 +30,7 @@ export function EditEventModal({
   const [title, setTitle] = useState(event.title);
   const [description, setDescription] = useState(event.description);
   const [category, setCategory] = useState(event.category ?? "");
+  const [activityType, setActivityType] = useState(event.activity_type ?? "");
   const [location, setLocation] = useState(event.location ?? "");
   const [startsAt, setStartsAt] = useState(toLocalInput(event.starts_at));
   const [isFree, setIsFree] = useState(event.is_free);
@@ -63,6 +65,7 @@ export function EditEventModal({
           title: title.trim(),
           description,
           category: category.trim() || null,
+          activity_type: activityType || null,
           location: location.trim() || null,
           starts_at: startsAt ? new Date(startsAt).toISOString() : null,
           is_free: isFree,
@@ -138,6 +141,29 @@ export function EditEventModal({
           value={coverImageUrl}
           onChange={setCoverImageUrl}
         />
+
+        <fieldset>
+          <legend className="text-lg text-ink">What kind of thing is it?</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {ACTIVITY_TYPES.map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                onClick={() =>
+                  setActivityType((cur) => (cur === a.label ? "" : a.label))
+                }
+                aria-pressed={activityType === a.label}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                  activityType === a.label
+                    ? "border-accent bg-accent text-white"
+                    : "border-edge text-ink hover:bg-paper"
+                }`}
+              >
+                <span aria-hidden>{a.emoji}</span> {a.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
         <label className="flex items-center gap-3 text-lg text-ink">
           <input

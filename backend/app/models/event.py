@@ -25,6 +25,11 @@ class Event(Base):
     title: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
     category: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    # What kind of thing it is, as distinct from what it is about: category is
+    # the topic (Cooking), activity_type is the shape (a class, a drop-in
+    # social, an outing). Picked from lib/activities.ts, same as category —
+    # a hand-typed value can never match a member's choice.
+    activity_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     location: Mapped[str | None] = mapped_column(String, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -82,6 +87,11 @@ class Event(Base):
     def host_name(self) -> str:
         """Owning organization's display name, surfaced on EventOut for dashboards."""
         return self.host.name if self.host else ""
+
+    @property
+    def host_logo_url(self) -> str | None:
+        """Owning organization's logo, for the member feed's org stepper."""
+        return self.host.logo_url if self.host else None
 
     images = relationship(
         "EventImage",

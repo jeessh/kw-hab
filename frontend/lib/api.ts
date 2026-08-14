@@ -62,9 +62,12 @@ export type Event = {
   id: string;
   host_id: string;
   host_name: string;
+  host_logo_url?: string | null;
   title: string;
   description: string;
   category?: string | null;
+  /** The shape of the program (Class, Drop-in, Outing) — see lib/activities. */
+  activity_type?: string | null;
   location?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
@@ -127,6 +130,8 @@ export type AdminAccount = {
   name: string;
   email: string;
   is_admin: boolean;
+  /** Organization logo, shown in the member feed's organization stepper. */
+  logo_url?: string | null;
   created_at: string;
   /** Programs this account owns — shown before a removal reassigns them. */
   event_count: number;
@@ -148,11 +153,18 @@ export const createAdmin = (body: {
   email: string;
   password: string;
   is_admin: boolean;
+  logo_url?: string | null;
 }) => api<AdminAccount>("/hosts", { method: "POST", body: JSON.stringify(body) });
 
 export const updateAdmin = (
   id: string,
-  body: { name?: string; is_admin?: boolean; password?: string },
+  body: {
+    name?: string;
+    is_admin?: boolean;
+    password?: string;
+    /** "" clears the logo; omitting leaves it alone. */
+    logo_url?: string;
+  },
 ) =>
   api<AdminAccount>(`/hosts/${id}`, {
     method: "PATCH",

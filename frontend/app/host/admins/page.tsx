@@ -13,6 +13,7 @@ import {
   type Session,
 } from "@/lib/api";
 import { AdminShell } from "@/components/AdminShell";
+import { ImageDrop } from "@/components/ImageDrop";
 import {
   Button,
   EmptyRow,
@@ -45,6 +46,7 @@ function AdminsTable({ session }: { session: Session }) {
 
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<AdminAccount | null>(null);
+  const [logoFor, setLogoFor] = useState<AdminAccount | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const myId = session.id ?? null;
@@ -178,6 +180,15 @@ function AdminsTable({ session }: { session: Session }) {
                             <span className="sr-only"> — {a.name}</span>
                           </Button>
                           <Button
+                            disabled={busy}
+                            onClick={() => {
+                              setNotice("");
+                              setLogoFor(a);
+                            }}
+                          >
+                            Logo<span className="sr-only"> for {a.name}</span>
+                          </Button>
+                          <Button
                             tone="danger"
                             disabled={busy}
                             onClick={() => {
@@ -208,6 +219,17 @@ function AdminsTable({ session }: { session: Session }) {
           }}
         />
       )}
+      {logoFor && (
+        <LogoModal
+          admin={logoFor}
+          onClose={() => setLogoFor(null)}
+          onSaved={(name) => {
+            setLogoFor(null);
+            setNotice(`Updated the logo for ${name}.`);
+            void load();
+          }}
+        />
+      )}
       {removing && (
         <RemoveAdminModal
           admin={removing}
@@ -229,6 +251,59 @@ function AdminsTable({ session }: { session: Session }) {
   );
 }
 
+/**
+ * An organization's logo is how members recognise it in the feed's stepper, so
+ * it has to be changeable after the account exists — most will be created
+ * before anyone has the file to hand.
+ */
+function LogoModal({
+  admin,
+  onClose,
+  onSaved,
+}: {
+  admin: AdminAccount;
+  onClose: () => void;
+  onSaved: (name: string) => void;
+}) {
+  const [logoUrl, setLogoUrl] = useState(admin.logo_url ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      // "" clears it — the API reads null as "leave alone".
+      await updateAdmin(admin.id, { logo_url: logoUrl });
+      onSaved(admin.name);
+    } catch (e) {
+      setError(apiMessage(e, "Couldn't save that logo. Please try again."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Logo for ${admin.name}`} onClose={onClose}>
+      <div className="mt-4">
+        <ImageDrop label="Organization logo" value={logoUrl} onChange={setLogoUrl} />
+      </div>
+      {error && (
+        <p role="alert" className="mt-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      <div className="mt-5 flex justify-end gap-2">
+        <Button disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button tone="primary" disabled={busy} onClick={() => void submit()}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 function AddAdminModal({
   onClose,
   onCreated,
@@ -240,6 +315,7 @@ function AddAdminModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSuper, setIsSuper] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -254,6 +330,7 @@ function AddAdminModal({
         email: email.trim(),
         password,
         is_admin: isSuper,
+        logo_url: logoUrl || null,
       });
       onCreated(name.trim());
     } catch (e) {
@@ -313,6 +390,14 @@ function AddAdminModal({
             className={inputClass}
           />
         </Field>
+
+        {/* Members identify organizations by their logo in the feed's stepper,
+            so this is the organization's face, not decoration. */}
+        <ImageDrop
+          label="Organization logo"
+          value={logoUrl}
+          onChange={setLogoUrl}
+        />
 
         <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
           <input

@@ -54,14 +54,25 @@ export const BucketStepper = memo(function BucketStepper({
               className="relative z-10 flex flex-col items-center"
             >
               <span
-                className="grid h-12 w-12 place-items-center rounded-full border-[3px] bg-white font-display text-sm font-bold transition-transform"
+                className="grid h-12 w-12 place-items-center overflow-hidden rounded-full border-[3px] bg-white font-display text-sm font-bold transition-transform"
                 style={{
                   borderColor: bucket.color,
                   color: bucket.color,
                   transform: active ? "scale(1.08)" : "none",
                 }}
               >
-                {initials(bucket.label)}
+                {bucket.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={bucket.logoUrl}
+                    alt=""
+                    draggable={false}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  // Initials until the organization has a logo on file.
+                  initials(bucket.label)
+                )}
               </span>
               <span className="sr-only">{bucket.label}</span>
               <span

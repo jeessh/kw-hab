@@ -1,4 +1,5 @@
 import type { Event } from "@/lib/api";
+import { FALLBACK_ACTIVITY } from "@/lib/activities";
 import { FALLBACK_CATEGORY, categoryStyle } from "@/lib/categories";
 
 /**
@@ -25,7 +26,13 @@ export type Dimension = {
   heading: string;
   emoji: string;
   /** Which bucket an event belongs to. */
-  bucket: (event: Event) => { id: string; label: string; color: string };
+  bucket: (event: Event) => {
+    id: string;
+    label: string;
+    color: string;
+    /** Shown instead of initials when the bucket has one. */
+    logoUrl?: string | null;
+  };
 };
 
 const GREY = "#8A8AA0";
@@ -54,7 +61,12 @@ export const DIMENSIONS: Dimension[] = [
     emoji: "🏢",
     bucket: (e) => {
       const name = e.host_name || "Community";
-      return { id: name, label: name, color: hashColor(name) };
+      return {
+        id: name,
+        label: name,
+        color: hashColor(name),
+        logoUrl: e.host_logo_url ?? null,
+      };
     },
   },
   {
@@ -99,10 +111,10 @@ export const DIMENSIONS: Dimension[] = [
     label: "Activity Type",
     heading: "Activity Type",
     emoji: "🎉",
-    // PLACEHOLDER. There is no activity field on Event yet, so everything lands
-    // in one bucket. Kept in the menu because the design calls for it; needs a
-    // real column before it groups anything (see docs/product-context.md).
-    bucket: () => ({ id: "all", label: "All activities", color: GREY }),
+    bucket: (e) => {
+      const label = e.activity_type || FALLBACK_ACTIVITY;
+      return { id: label, label, color: hashColor(label) };
+    },
   },
   {
     key: "all",
@@ -120,6 +132,7 @@ export type Bucket = {
   id: string;
   label: string;
   color: string;
+  logoUrl?: string | null;
   /** Index in the feed of this bucket's first event — what jumping lands on. */
   index: number;
 };
