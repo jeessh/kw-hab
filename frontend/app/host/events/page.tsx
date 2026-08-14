@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, api, apiMessage, type Event, type Session } from "@/lib/api";
+import { oneCardPerProgram } from "@/lib/feed";
 import { AdminShell } from "@/components/AdminShell";
 import { EditEventModal } from "@/components/EditEventModal";
 import { ConsoleHeader } from "@/components/host/ConsoleHeader";
@@ -113,10 +114,27 @@ function PostedEventsPage({ session }: { session: Session }) {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [events]);
 
+  // One row per program, not one per date.
+  //
+  // A weekly program is stored as a dated row per occurrence, so a console
+  // listing every row showed "Open Space: Coffee & Chats" sixteen times in a
+  // column and buried every other program under it. Staff manage the program;
+  // the dates are how it runs. Filters and search apply first, so a filter that
+  // matches only some dates still surfaces the program.
   const shown = useMemo(
-    () => applyHostFilters(events, filters, query),
+    () => oneCardPerProgram(applyHostFilters(events, filters, query)),
     [events, filters, query],
   );
+
+  // How many live dates each program has, for the count on its card.
+  const datesBySeries = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ev of events) {
+      const key = ev.series_id ?? ev.id;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [events]);
 
   async function confirmDelete() {
     const ev = deleting;
@@ -124,13 +142,16 @@ function PostedEventsPage({ session }: { session: Session }) {
     setDeleting(null);
     setError(null);
     try {
-      await api(`/events/${ev.id}`, { method: "DELETE" });
+      // series=true: the card is the program, so removing it removes the run.
+      // Archiving only the date that happened to be on the card would leave
+      // the other fifteen live with nothing on screen to say so.
+      await api(`/events/${ev.id}?series=true`, { method: "DELETE" });
       await load();
       setToast({
         message: `'${ev.title}' was successfully deleted.`,
         tone: "deleted",
         undo: async () => {
-          await api(`/events/${ev.id}/restore`, { method: "POST" });
+          await api(`/events/${ev.id}/restore?series=true`, { method: "POST" });
           await load();
         },
       });
@@ -210,6 +231,7 @@ function PostedEventsPage({ session }: { session: Session }) {
                 <PostedEventCard
                   key={ev.id}
                   event={ev}
+                  dateCount={datesBySeries.get(ev.series_id ?? ev.id)}
                   // Editing stays with whoever owns the program; removal is a
                   // KW Hab decision once anyone has saved it.
                   // Admins manage their own programming; superadmins manage

@@ -28,7 +28,7 @@ const COMMANDS: { key: keyof SpeechCommandHandlers; test: RegExp }[] = [
   // back · bak, bag, buck, plus the synonyms people reach for
   { key: "onBack", test: /\b(back|bak|bag|buck|previous|prev|last)\b/ },
   // save · safe, save it, "save event"
-  { key: "onAdd", test: /\b(save|safe|saved|save it|attend|register|add)\b/ },
+  { key: "onAdd", test: /\b(save|safe|saved|saves|sav|shave|sale|attend|register|add)\b/ },
   // list · least, lists, "my list"
   { key: "onSettings", test: /\b(list|least|lists|listed|settings)\b/ },
 ];
@@ -90,11 +90,9 @@ export function useSpeechCommands(
   // Latched on a permanent error (mic denied, no device) to stop the
   // onend→start→onerror hot-loop. Reset each time `enabled` re-subscribes.
   const hardStopRef = useRef(false);
-  // One action per utterance: interim results mean the same "next" arrives
-  // several times as the engine sharpens its guess, and acting on each would
-  // skip four programs for one word.
-  const firedRef = useRef(false);
-  const firedForRef = useRef(-1);
+  // The (utterance, command) pair already acted on, so the interim and final
+  // results of one word don't fire twice. Null once the utterance closes.
+  const handledRef = useRef<string | null>(null);
 
   useEffect(() => {
     setSupported(!!RecognitionCtor());
@@ -111,8 +109,8 @@ export function useSpeechCommands(
     rec.continuous = true;
     // Interim results fire while the word is still being said, so a command
     // lands in a couple of hundred milliseconds instead of waiting for the
-    // engine to decide the utterance has ended. `firedRef` keeps the interim
-    // and the final result for one utterance from acting twice.
+    // engine to decide the utterance has ended; `handledRef` keeps the interim
+    // and the final result of one word from acting twice.
     rec.interimResults = true;
     // The top guess is the most fluent English, not the likeliest command —
     // "next" often loses to "text". Reading the alternatives lets a correct
@@ -135,15 +133,26 @@ export function useSpeechCommands(
       if (alternatives.length === 0) return;
       setLastHeard(alternatives[0]);
 
-      // A new utterance re-arms; the index identifies it across interim events.
-      if (e.resultIndex !== firedForRef.current) firedRef.current = false;
-      firedForRef.current = e.resultIndex;
-      if (firedRef.current) return;
-
       const key = alternatives.map(matchCommand).find(Boolean);
       if (!key) return;
-      firedRef.current = true;
-      handlersRef.current[key]?.();
+
+      // Fire once per (utterance, command) — and let a *different* command
+      // through immediately even if the engine reuses the index.
+      //
+      // This used to latch on resultIndex alone: act once, then refuse until
+      // the index changed. Chrome does not reliably advance resultIndex between
+      // utterances in a continuous session, so after one command landed the
+      // next one was dropped without a trace. Saying "next" and then "save"
+      // meant the save never happened and nothing said why.
+      //
+      // A final result closes the utterance, so repeating the same word — the
+      // natural way to page through several programs — works on the next one.
+      const signature = `${e.resultIndex}:${key}`;
+      if (handledRef.current !== signature) {
+        handledRef.current = signature;
+        handlersRef.current[key]?.();
+      }
+      if (result.isFinal) handledRef.current = null;
     };
     rec.onend = () => {
       setListening(false);

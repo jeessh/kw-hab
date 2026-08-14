@@ -854,7 +854,7 @@ export function EventsView({
   );
 
   // ---- voice commands (continuous while enabled) ----
-  const { supported: voiceSupported, listening } = useSpeechCommands(
+  const { supported: voiceSupported, listening, lastHeard } = useSpeechCommands(
     voiceEnabled,
     actionHandlers,
     // Mute the mic while the TTS bot is reading, so it doesn't hear itself.
@@ -1091,6 +1091,7 @@ export function EventsView({
         headSupported={headSupported}
         onToggleHead={toggleHead}
         listening={voiceEnabled && listening}
+        lastHeard={lastHeard}
         interests={me?.interest_categories ?? []}
         onToggleInterest={toggleInterest}
         signedIn={signedIn}
@@ -1393,6 +1394,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   headSupported,
   onToggleHead,
   listening,
+  lastHeard,
   interests,
   onToggleInterest,
   signedIn,
@@ -1410,6 +1412,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   headSupported: boolean;
   onToggleHead: (v: boolean) => void;
   listening: boolean;
+  /** The recognizer's most recent transcript, for the voice hint. */
+  lastHeard: string;
   interests: string[];
   onToggleInterest: (label: string) => void;
   signedIn: boolean;
@@ -1523,8 +1527,16 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
               onChange={onToggleTts}
             />
             <MenuToggle
-              label="Speech-to-text (voice control)"
-              hint={'Say “next”, “back”, “save”, or “list”.'}
+              label="Speech to action"
+              hint={
+                // What it actually heard, once it has heard anything. The
+                // recognizer mishears a four-word vocabulary often enough that
+                // "it isn't working" and "it heard something else" look
+                // identical from the outside — this tells them apart.
+                listening && lastHeard
+                  ? `Heard “${lastHeard}”. Say “next”, “back”, “save”, or “list”.`
+                  : 'Say “next”, “back”, “save”, or “list”.'
+              }
               checked={voiceEnabled}
               disabled={!voiceSupported}
               disabledHint="Not supported here (try Chrome or Edge)."

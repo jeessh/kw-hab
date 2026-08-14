@@ -275,13 +275,38 @@ def update_event(
     return event
 
 
+def _series_targets(
+    db: Session,
+    event: Event,
+    series: bool,
+    include_archived: bool = False,
+) -> list[Event]:
+    """The rows an archive/restore should touch: one date, or the whole run.
+
+    A one-off has no series_id, so `series=true` on it is simply the event
+    itself — callers don't have to know which kind they're holding.
+    """
+    if not series or not event.series_id:
+        return [event]
+    q = db.query(Event).filter(Event.series_id == event.series_id)
+    if not include_archived:
+        q = q.filter(Event.deleted_at.is_(None))
+    return q.all()
+
+
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event(
     event_id: uuid.UUID,
+    series: bool = False,
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
     """Archive the program. Superadmins only.
+
+    `series=true` archives every remaining date of a repeating program, not just
+    the one identified. The console lists a repeating program as one row, so
+    "remove" there means the program — archiving only the date that happened to
+    be on the card would leave fifteen others live and no sign of it.
 
     It leaves every member-facing surface immediately, but the row and its
     attendance history stay — those counts are what the organizer reports to
@@ -296,17 +321,22 @@ def delete_event(
     event = db.get(Event, event_id)
     if not event or event.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
+
+    targets = _series_targets(db, event, series)
+
     # Superadmins always. An owner may take down a program only while nobody
     # has saved it — the moment somebody has, removing it reaches past the
     # agency that posted it, and it's also somebody's grant evidence. That's
     # what makes "undo" work on a program posted seconds ago while still
     # keeping removal a KW Hab decision once it matters.
     if not host.is_admin:
-        if event.host_id != host.id:
+        if any(e.host_id != host.id for e in targets):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+        # Across the whole run, not just the date on the card: one saved date
+        # is enough to make removing the program somebody else's business.
         saved_by = (
             db.query(func.count(Attendance.user_id))
-            .filter(Attendance.event_id == event.id)
+            .filter(Attendance.event_id.in_([e.id for e in targets]))
             .scalar()
             or 0
         )
@@ -315,13 +345,15 @@ def delete_event(
                 status.HTTP_403_FORBIDDEN,
                 "People have saved this program — ask KW Hab to remove it.",
             )
-    event.deleted_at = func.now()
+    for target in targets:
+        target.deleted_at = func.now()
     db.commit()
 
 
 @router.post("/{event_id}/restore", response_model=EventOut)
 def restore_event(
     event_id: uuid.UUID,
+    series: bool = False,
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
@@ -329,13 +361,19 @@ def restore_event(
 
     Same rule as archiving: superadmins always, and an owner while nobody has
     saved it. Nothing was destroyed, so this only has to clear the flag.
+
+    Takes `series` for the same reason delete does — Undo has to put back
+    exactly what was taken away, or the undo of removing a repeating program
+    restores a single date and quietly loses the rest.
     """
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
-    if not host.is_admin and event.host_id != host.id:
+    targets = _series_targets(db, event, series, include_archived=True)
+    if not host.is_admin and any(e.host_id != host.id for e in targets):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
-    event.deleted_at = None
+    for target in targets:
+        target.deleted_at = None
     db.commit()
     db.refresh(event)
     return event
