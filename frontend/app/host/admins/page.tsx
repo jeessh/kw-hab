@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
+  api,
   apiMessage,
   createAdmin,
   createInvite,
@@ -17,6 +18,8 @@ import {
   type Session,
 } from "@/lib/api";
 import { AdminShell } from "@/components/AdminShell";
+import { ConsoleHeader } from "@/components/host/ConsoleHeader";
+import { CYAN } from "@/components/host/PostedEvents";
 import { ImageDrop } from "@/components/ImageDrop";
 import {
   Button,
@@ -30,11 +33,7 @@ import { Modal } from "@/components/Modal";
 
 export default function AdminsPage() {
   return (
-    <AdminShell
-      title="Admins"
-      description="Organizer accounts. Only superadmins can manage this list."
-      requireSuperadmin
-    >
+    <AdminShell title="Organizations" requireSuperadmin bare>
       {(session) => <AdminsTable session={session} />}
     </AdminShell>
   );
@@ -59,6 +58,7 @@ function AdminsTable({ session }: { session: Session }) {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const myId = session.id ?? null;
+  const [organization, setOrganization] = useState("");
 
   async function load() {
     setLoading(true);
@@ -83,6 +83,9 @@ function AdminsTable({ session }: { session: Session }) {
 
   useEffect(() => {
     void load();
+    api<{ name: string }>("/hosts/me")
+      .then((h) => setOrganization(h.name))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -108,34 +111,43 @@ function AdminsTable({ session }: { session: Session }) {
   }
 
   return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p role="status" aria-live="polite" className="text-sm text-slate-600">
-          {loading
-            ? "Loading admins…"
-            : notice ||
-              `${admins.length} ${admins.length === 1 ? "account" : "accounts"}`}
-        </p>
-        <div className="flex gap-2">
-          <Button
-            tone="primary"
+    <div className="min-h-dvh bg-white">
+    <div className="mx-auto w-full max-w-[1500px] px-8 py-6">
+      <ConsoleHeader isSuper organization={organization} />
+
+      <div className="mt-12 flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-display text-5xl font-extrabold text-ink">
+          Organizations
+        </h1>
+        <div className="flex flex-wrap gap-3">
+          <button
             onClick={() => {
               setNotice("");
               setInviting(true);
             }}
+            className="rounded-lg px-5 py-3 font-display text-lg font-semibold text-ink transition-transform hover:scale-[1.02]"
+            style={{ background: CYAN }}
           >
-            Invite an organization
-          </Button>
-          <Button
+            + Invite an organization
+          </button>
+          <button
             onClick={() => {
               setNotice("");
               setAdding(true);
             }}
+            className="rounded-lg bg-[#D9D9D9] px-5 py-3 font-display text-lg font-semibold text-ink transition-colors hover:bg-[#CDCDCD]"
           >
             Create directly
-          </Button>
+          </button>
         </div>
       </div>
+
+      <p role="status" aria-live="polite" className="mt-3 text-base text-muted">
+        {loading
+          ? "Loading organizations…"
+          : notice ||
+            `${admins.length} ${admins.length === 1 ? "account" : "accounts"}`}
+      </p>
 
       {error && (
         <p role="alert" className="mt-3 text-sm font-medium text-red-600">
@@ -349,7 +361,8 @@ function AdminsTable({ session }: { session: Session }) {
           }}
         />
       )}
-    </>
+    </div>
+    </div>
   );
 }
 

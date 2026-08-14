@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
+  api,
   apiMessage,
   createMember,
   deleteMember,
@@ -13,6 +14,7 @@ import {
   type MemberAccount,
 } from "@/lib/api";
 import { AdminShell } from "@/components/AdminShell";
+import { ConsoleHeader } from "@/components/host/ConsoleHeader";
 import { Button, EmptyRow, Field, TableCard, inputClass } from "@/components/AdminTable";
 import { Modal } from "@/components/Modal";
 import { emojiFor } from "@/lib/icons";
@@ -27,11 +29,7 @@ import { CYAN } from "@/components/host/PostedEvents";
  */
 export default function UsersPage() {
   return (
-    <AdminShell
-      title="Users"
-      description="Everyone with an account. Superadmins only."
-      requireSuperadmin
-    >
+    <AdminShell title="Users" requireSuperadmin bare>
       {() => <UsersTabs />}
     </AdminShell>
   );
@@ -39,9 +37,22 @@ export default function UsersPage() {
 
 function UsersTabs() {
   const [tab, setTab] = useState<"members" | "admins">("members");
+  const [organization, setOrganization] = useState("");
+
+  useEffect(() => {
+    api<{ name: string }>("/hosts/me")
+      .then((h) => setOrganization(h.name))
+      .catch(() => {});
+  }, []);
 
   return (
-    <>
+    <div className="min-h-dvh bg-white">
+    <div className="mx-auto w-full max-w-[1500px] px-8 py-6">
+      <ConsoleHeader isSuper organization={organization} />
+
+      <h1 className="mb-6 mt-12 font-display text-5xl font-extrabold text-ink">
+        Users
+      </h1>
       <div
         role="tablist"
         aria-label="Account type"
@@ -83,7 +94,8 @@ function UsersTabs() {
           </p>
         )}
       </div>
-    </>
+    </div>
+    </div>
   );
 }
 
