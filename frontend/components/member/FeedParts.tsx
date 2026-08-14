@@ -236,7 +236,10 @@ export const SaveZone = memo(
             ref={ref as never}
             type="button"
             onClick={onSave}
-            aria-label={`Saved events, ${count} saved. Activate to save this program.`}
+            // The big control saves; the badge opens the list. Naming each for
+            // what it does, since "Saved Events" on the save button read as the
+            // way to see them.
+            aria-label="Save this program"
             className="flex h-[104px] w-[min(88vw,420px)] flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors"
             style={{
               borderColor: active ? SKY_DEEP : "#B9B7C4",

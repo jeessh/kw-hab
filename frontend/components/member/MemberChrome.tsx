@@ -107,11 +107,12 @@ export const SeeEventsBy = memo(function SeeEventsBy({
       if (!wrapRef.current?.contains(e.target as Node)) onOpenChange(false);
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onOpenChange(false);
-        triggerRef.current?.focus();
-      }
+      if (e.key !== "Escape") return;
+      // Deliberately not stopping propagation: swallowing it here meant an
+      // Escape that closed this menu never reached the saved-events panel, so
+      // dismissing both took two presses for no visible reason.
+      onOpenChange(false);
+      triggerRef.current?.focus();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown, true);
@@ -126,21 +127,26 @@ export const SeeEventsBy = memo(function SeeEventsBy({
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
         See events by
       </p>
-      <button
-        ref={triggerRef}
-        onClick={() => onOpenChange(!open)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="mt-0.5 inline-flex items-center gap-3 font-display text-4xl font-extrabold text-ink sm:text-5xl"
-      >
-        {dimension.heading}
-        <span
-          aria-hidden
-          className={`transition-transform ${open ? "" : "rotate-180"}`}
+      {/* The page's heading, and the control that changes it. Screen-reader
+          users navigate by heading; without one this screen has nothing to
+          land on. */}
+      <h1 className="mt-0.5">
+        <button
+          ref={triggerRef}
+          onClick={() => onOpenChange(!open)}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          className="inline-flex items-center gap-3 font-display text-4xl font-extrabold text-ink sm:text-5xl"
         >
-          <ChevronUp />
-        </span>
-      </button>
+          {dimension.heading}
+          <span
+            aria-hidden
+            className={`transition-transform ${open ? "" : "rotate-180"}`}
+          >
+            <ChevronUp />
+          </span>
+        </button>
+      </h1>
 
       {open && (
         <div
@@ -209,7 +215,9 @@ export const AccountChip = memo(function AccountChip({
       <span
         aria-hidden
         className={`grid h-9 w-9 place-items-center rounded-full ${
-          signedIn ? "bg-[#E8318A] text-white" : "bg-[#D7D5DE] text-white"
+          // Signed out was white on #D7D5DE — about 1.3:1, effectively
+          // invisible to anyone with low vision.
+          signedIn ? "bg-[#E8318A] text-white" : "bg-[#6B6879] text-white"
         }`}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">

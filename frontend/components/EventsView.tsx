@@ -41,13 +41,7 @@ import {
   FALLBACK_CATEGORY,
   categoryStyle,
 } from "@/lib/categories";
-import {
-  NO_FILTERS,
-  filtersActive,
-  organizations,
-  personalizedFeed,
-  type FeedFilters,
-} from "@/lib/feed";
+import { personalizedFeed } from "@/lib/feed";
 import {
   bucketsFor,
   dimensionByKey,
@@ -74,13 +68,6 @@ const NAV_HOVER_MS = 1500; // hover-dwell on a side zone to move
 const NAV_PRESS_MS = 500; // press-and-hold a side zone to move (also covers touch)
 const NAV_PEEK = 96; // px the whole carousel slides while a side dwell builds
 const BERRY = "#E8318A"; // card header + primary accent
-
-// How each side card sits: translate px, scale, opacity, stacking.
-const NEIGHBOR: Record<1 | 2, { x: number; scale: number; opacity: number; z: number }> = {
-  1: { x: 380, scale: 0.9, opacity: 0.5, z: 20 },
-  2: { x: 650, scale: 0.78, opacity: 0.22, z: 10 },
-};
-
 // Topic icon + colour comes from the shared taxonomy in lib/categories, so the
 // stepper, the card header, the signup chips, and the host-side picker can't
 // drift apart.
@@ -121,9 +108,6 @@ export function EventsView({
   );
   const [view, setView] = useState<"events" | "settings">("events");
   const [confirming, setConfirming] = useState(false);
-  // Member-chosen filters. Personalization only ever reorders the feed; these
-  // are the one thing that removes cards, and only because the member asked.
-  const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
 
   const [holdProgress, setHoldProgress] = useState(0);
   const [flying, setFlying] = useState(false);
@@ -240,17 +224,12 @@ export function EventsView({
   const accessPrefs = me?.accessibility_prefs;
   const feed = useMemo(
     () =>
-      personalizedFeed(
-        events,
-        { interests: interests ?? [], accessPrefs: accessPrefs ?? [] },
-        filters,
-      ),
-    [events, interests, accessPrefs, filters],
+      personalizedFeed(events, {
+        interests: interests ?? [],
+        accessPrefs: accessPrefs ?? [],
+      }),
+    [events, interests, accessPrefs],
   );
-
-  // Every hosting org in the unfiltered feed, so choosing one org doesn't
-  // collapse the menu you'd use to choose a different one.
-  const orgs = useMemo(() => organizations(events), [events]);
 
   // A filter change can shorten the feed out from under the cursor.
   useEffect(() => {
@@ -278,17 +257,6 @@ export function EventsView({
   }, []);
 
   // Non-wrapping window: the five cards always read left→right in order.
-  const slotEvent = useCallback(
-    (offset: number): Event | null => {
-      const len = feed.length;
-      if (len === 0) return null;
-      // 5+ events: wrap so every slot shows a real card; fewer: blanks at the ends.
-      if (len >= 5) return feed[(((i + offset) % len) + len) % len];
-      const idx = i + offset;
-      return idx >= 0 && idx < len ? feed[idx] : null;
-    },
-    [feed, i],
-  );
 
   // Buckets of the chosen dimension, in the order they appear in the feed.
   const dimension = useMemo(
@@ -305,15 +273,6 @@ export function EventsView({
     ? dimension.bucket(current)
     : { id: "", label: "", color: "#8A8AA0" };
 
-  // Distinct topic tags in first-appearance order.
-  const tags = useMemo(() => {
-    const first = new Map<string, number>();
-    feed.forEach((ev, idx) => {
-      const t = ev.category || FALLBACK_CATEGORY;
-      if (!first.has(t)) first.set(t, idx);
-    });
-    return [...first.entries()].map(([tag, index]) => ({ tag, index }));
-  }, [feed]);
 
   // Read `saved` through a ref so `attend` (and everything built on it) keeps
   // a stable identity across saves.
@@ -670,24 +629,6 @@ export function EventsView({
     [setPref],
   );
 
-  // ---- filters (member-chosen; reset to the first card so the best match for
-  // the new choice is what they see) ----
-  const cycleCost = useCallback(() => {
-    setFilters((f) => ({
-      ...f,
-      cost: f.cost === "all" ? "free" : f.cost === "free" ? "paid" : "all",
-    }));
-    setI(0);
-  }, []);
-  const chooseOrg = useCallback((org: string) => {
-    setFilters((f) => ({ ...f, org }));
-    setI(0);
-  }, []);
-  const clearFilters = useCallback(() => {
-    setFilters(NO_FILTERS);
-    setI(0);
-  }, []);
-
   const doLogout = useCallback(async () => {
     try {
       await logout();
@@ -698,19 +639,33 @@ export function EventsView({
   }, [router]);
 
   // The four card actions, shared by voice + head-tracking for identical behavior.
+  // Voice and head-tracking both drive these. In the grid there is no focused
+  // card, so next/back/add would move and save something invisible — the head
+  // cursor would fill and a program nobody had looked at would be saved. Only
+  // opening the saved list still makes sense there.
+  const cardActionsLive = view !== "settings" && viewMode === "carousel";
   const actionHandlers = useMemo(
     () => ({
       onNext: () => {
-        if (view !== "settings") next();
+        if (cardActionsLive) next();
       },
-      onBack: () => (view === "settings" ? closeSettings() : prev()),
+      onBack: () =>
+        view === "settings" ? closeSettings() : cardActionsLive && prev(),
       onAdd: () => {
-        if (view !== "settings") void dragToAttend();
+        if (cardActionsLive) void dragToAttend();
       },
       onSettings: () =>
         view === "settings" ? closeSettings() : openSettings(),
     }),
-    [view, next, prev, dragToAttend, closeSettings, openSettings],
+    [
+      view,
+      cardActionsLive,
+      next,
+      prev,
+      dragToAttend,
+      closeSettings,
+      openSettings,
+    ],
   );
 
   // ---- voice commands (continuous while enabled) ----
@@ -741,13 +696,15 @@ export function EventsView({
 
   // ---- text-to-speech: read the current event when it changes ----
   useEffect(() => {
-    if (ttsEnabled && current && view === "events") {
+    // Nothing to read in the grid: there is no "current card" on screen, so
+    // reading one aloud describes something the listener can't find.
+    if (ttsEnabled && current && view === "events" && viewMode === "carousel") {
       speak(eventToSpeech(current));
     } else {
       cancelSpeech();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [i, current?.id, ttsEnabled, view]);
+  }, [i, current?.id, ttsEnabled, view, viewMode]);
 
   // ---- keyboard ----
   useEffect(() => {
@@ -756,6 +713,22 @@ export function EventsView({
         if (e.key === "Escape" || e.key === "ArrowDown") closeSettings();
         return;
       }
+      // Don't steal arrows from whatever the person is actually using. A
+      // select, a text field or an open menu owns its own arrow keys; swallowing
+      // them here made the organization picker unusable and, worse, started a
+      // hold-to-save the member could neither see nor cancel.
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+          target.isContentEditable ||
+          target.closest('[role="menu"]'))
+      ) {
+        return;
+      }
+      // The grid has no focused card, so the card actions have nothing to act
+      // on. Firing them anyway saved programs nobody had seen.
+      if (viewMode !== "carousel") return;
       if (flying) return;
       switch (e.key) {
         case "ArrowRight":
@@ -805,9 +778,6 @@ export function EventsView({
   }
 
   const alreadySaved = current ? saved.has(current.id) : false;
-  // "Nothing to show" has two very different causes, and telling someone there
-  // are no programs when they've just filtered them all out is a dead end.
-  const filteredOut = events.length > 0 && feed.length === 0;
   const empty = status === "empty" || !current;
 
   return (
@@ -922,37 +892,15 @@ export function EventsView({
           pointerEvents: view === "settings" ? "none" : "auto",
         }}
       >
-        {/* The design has no filter bar on the one-at-a-time view — that view
-            is about looking at one thing. Keeping it on the grid preserves
-            cost/organization filtering rather than quietly dropping a feature
-            the design simply didn't cover. */}
-        {events.length > 0 && viewMode === "grid" && (
-          <FilterBar
-            filters={filters}
-            orgs={orgs}
-            shown={feed.length}
-            total={events.length}
-            onCycleCost={cycleCost}
-            onChooseOrg={chooseOrg}
-            onClear={clearFilters}
-          />
-        )}
+        {/* No filter bar: the design doesn't have one. Cost and organization
+            are two of the six ways to group instead, which is the design's
+            answer to the same need. */}
 
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
             <p className="font-display text-3xl text-muted">
-              {filteredOut
-                ? "Nothing matches those choices."
-                : "No programs yet. Check back soon."}
+              No programs yet. Check back soon.
             </p>
-            {filteredOut && (
-              <button
-                onClick={() => setFilters(NO_FILTERS)}
-                className="rounded-2xl bg-accent px-8 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
-              >
-                Show all programs
-              </button>
-            )}
           </div>
         ) : (
           <>
@@ -1015,9 +963,6 @@ export function EventsView({
                 style={{ x: peekX }}
                 className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
               >
-                {/* The design shows one program at a time with nothing behind
-                    it. The neighbour preview cards are gone; slotEvent still
-                    exists for the voice/head handlers that look ahead. */}
                 <motion.div
                   ref={cardWrapRef}
                   style={{
@@ -1103,315 +1048,6 @@ export function EventsView({
     </motion.main>
   );
 }
-
-/* ---------------- card ---------------- */
-
-const EventCard = memo(function EventCard({
-  event,
-  saved,
-}: {
-  event: Event;
-  saved: boolean;
-}) {
-  const headerColor = tagStyle(event.category || "General").color;
-  return (
-    <div className="flex h-full flex-col">
-      {/* header tinted by the event's category + braille handle / drag-to-save */}
-      <div
-        className="flex items-center justify-between px-5 py-3"
-        style={{ background: headerColor }}
-      >
-        <BrailleHandle />
-        <span className="flex items-center gap-2 font-semibold text-white">
-          {saved ? "Saved ✓" : "Drag to save"}
-          <span aria-hidden>↓</span>
-        </span>
-      </div>
-
-      {/* body: image left, details right */}
-      <div className="flex flex-1 gap-5 p-5">
-        <div className="relative h-full w-[42%] shrink-0 overflow-hidden rounded-2xl bg-edge">
-          {event.cover_image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={event.cover_image_url}
-              alt=""
-              className="h-full w-full object-cover"
-              draggable={false}
-            />
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="font-display text-2xl font-extrabold leading-tight text-ink">
-            {event.title}
-          </h2>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-ink">
-            {fullDate(event.starts_at) && (
-              <span className="inline-flex items-center gap-1.5">
-                <CalendarIcon /> {fullDate(event.starts_at)}
-              </span>
-            )}
-            {event.location && (
-              <span className="inline-flex items-center gap-1.5">
-                <PinIcon /> {event.location}
-              </span>
-            )}
-          </div>
-          <p className="line-clamp-4 text-sm text-muted">{event.description}</p>
-          <p className="mt-auto text-xs font-semibold uppercase tracking-wide text-pop">
-            {countdown(event.starts_at)}
-            {saved ? " · Saved ✓" : ""}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-function BrailleHandle() {
-  return (
-    <div className="grid grid-cols-3 gap-1" aria-hidden>
-      {Array.from({ length: 6 }).map((_, k) => (
-        <span key={k} className="h-1.5 w-1.5 rounded-full bg-white/90" />
-      ))}
-    </div>
-  );
-}
-
-/* ---------------- neighbours ---------------- */
-
-// Neighbour preview: a category-tinted top bar over a plain body, no details.
-function CardSkeleton({ event }: { event: Event }) {
-  const barColor = tagStyle(event.category || "General").color;
-  return (
-    <div className="flex h-full flex-col" aria-hidden>
-      <div className="h-11 w-full" style={{ background: barColor, opacity: 0.65 }} />
-      <div className="flex-1 bg-card" />
-    </div>
-  );
-}
-
-const NeighborCard = memo(function NeighborCard({
-  event,
-  offset,
-}: {
-  event: Event | null;
-  offset: number;
-}) {
-  const mag = (Math.abs(offset) === 1 ? 1 : 2) as 1 | 2;
-  const cfg = NEIGHBOR[mag];
-  const tx = (offset < 0 ? -1 : 1) * cfg.x;
-  return (
-    <div
-      className="pointer-events-none absolute inset-0 grid place-items-center"
-      style={{ zIndex: cfg.z }}
-      aria-hidden
-    >
-      <motion.div
-        initial={false}
-        animate={{ x: tx, scale: cfg.scale, opacity: cfg.opacity }}
-        transition={{ type: "spring", stiffness: 260, damping: 30 }}
-        style={{ width: "min(86vw, 760px)" }}
-        className="aspect-[16/9] overflow-hidden rounded-[28px] shadow-card"
-      >
-        {event ? (
-          <div className="h-full w-full bg-card">
-            <CardSkeleton event={event} />
-          </div>
-        ) : (
-          <div className="h-full w-full bg-edge" />
-        )}
-      </motion.div>
-    </div>
-  );
-});
-
-/* ---------------- filters ---------------- */
-
-const COST_LABEL: Record<FeedFilters["cost"], string> = {
-  all: "Free & paid",
-  free: "Free only",
-  paid: "Paid only",
-};
-// What one more tap will switch to — spoken in the button's accessible name so
-// the control explains itself without a legend.
-const COST_NEXT: Record<FeedFilters["cost"], string> = {
-  all: "free only",
-  free: "paid only",
-  paid: "free and paid",
-};
-
-// Two controls, each showing one choice at a time — deliberately not a filter
-// panel. Cost cycles (only three states); organizations use a native select so
-// a long list stays one tap and reads correctly to a screen reader.
-const FilterBar = memo(function FilterBar({
-  filters,
-  orgs,
-  shown,
-  total,
-  onCycleCost,
-  onChooseOrg,
-  onClear,
-}: {
-  filters: FeedFilters;
-  orgs: string[];
-  shown: number;
-  total: number;
-  onCycleCost: () => void;
-  onChooseOrg: (org: string) => void;
-  onClear: () => void;
-}) {
-  const active = filtersActive(filters);
-  return (
-    <div className="mb-1 flex w-full max-w-2xl flex-wrap items-center justify-center gap-2">
-      <button
-        type="button"
-        onClick={onCycleCost}
-        aria-label={`Cost: ${COST_LABEL[filters.cost]}. Activate to show ${
-          COST_NEXT[filters.cost]
-        }.`}
-        className={`rounded-full border-2 bg-white px-5 py-2.5 font-semibold shadow-card transition-transform hover:scale-[1.03] focus-visible:scale-[1.03] ${
-          filters.cost === "all"
-            ? "border-edge text-ink"
-            : "border-accent text-accent"
-        }`}
-      >
-        <span aria-hidden>💲 </span>
-        {COST_LABEL[filters.cost]}
-      </button>
-
-      <label className="sr-only" htmlFor="feed-org">
-        Show programs from
-      </label>
-      <select
-        id="feed-org"
-        value={filters.org}
-        onChange={(e) => onChooseOrg(e.target.value)}
-        className={`max-w-[16rem] truncate rounded-full border-2 bg-white px-5 py-2.5 font-semibold shadow-card outline-none ${
-          filters.org === "all"
-            ? "border-edge text-ink"
-            : "border-accent text-accent"
-        }`}
-      >
-        <option value="all">🏠 All organizations</option>
-        {orgs.map((org) => (
-          <option key={org} value={org}>
-            {org}
-          </option>
-        ))}
-      </select>
-
-      {active && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="rounded-full px-4 py-2.5 font-semibold text-muted underline underline-offset-2 hover:text-ink"
-        >
-          Show all
-        </button>
-      )}
-
-      <p className="sr-only" role="status" aria-live="polite">
-        {active
-          ? `Showing ${shown} of ${total} programs`
-          : `Showing all ${total} programs`}
-      </p>
-    </div>
-  );
-});
-
-/* ---------------- stepper ---------------- */
-
-const TagStepper = memo(function TagStepper({
-  tags,
-  activeTag,
-  onJump,
-}: {
-  tags: { tag: string; index: number }[];
-  activeTag: string;
-  onJump: (i: number) => void;
-}) {
-  return (
-    <div className="relative mt-6 w-full max-w-2xl">
-      <div className="absolute left-[8%] right-[8%] top-[24px] h-1 rounded bg-edge" />
-      <div
-        className="relative flex justify-between"
-        role="tablist"
-        aria-label="Topics"
-      >
-        {tags.map(({ tag, index }) => {
-          const active = tag === activeTag;
-          const { emoji, color } = tagStyle(tag);
-          return (
-            <button
-              key={tag}
-              onClick={() => onJump(index)}
-              role="tab"
-              aria-selected={active}
-              aria-label={`${tag}${active ? ", current topic" : ""}`}
-              className="relative grid h-12 w-12 place-items-center"
-            >
-              <span
-                className="absolute inset-0 rounded-full border-[3px] bg-white"
-                style={{ borderColor: color }}
-              />
-              {active && (
-                <motion.span
-                  layoutId="tag-indicator"
-                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                  className="absolute inset-0 rounded-full border-[3px]"
-                  style={{ background: color, borderColor: color }}
-                />
-              )}
-              <span
-                className="relative z-10 text-xl"
-                style={{ transform: active ? "scale(1.1)" : "none" }}
-                aria-hidden
-              >
-                {emoji}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
-
-/* ---------------- drop zone ---------------- */
-
-// Container keeps the ref (fly-target geometry); the button inside gives
-// keyboard and screen-reader users the same save action as drag/hold.
-const DropZone = memo(
-  forwardRef<HTMLDivElement, { active: boolean; onSave: () => void }>(
-    function DropZone({ active, onSave }, ref) {
-      return (
-        <div
-          ref={ref}
-          className="absolute bottom-6 left-1/2 flex h-32 w-[min(90vw,520px)] -translate-x-1/2 items-center justify-center rounded-3xl border-2 border-dashed transition-colors"
-          style={{
-            borderColor: active ? BERRY : "#C9B8D6",
-            background: active ? "rgba(232,49,138,0.10)" : "rgba(232,49,138,0.04)",
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Save this event"
-            onClick={onSave}
-            className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-3xl"
-          >
-            <span className="text-2xl" style={{ color: BERRY }} aria-hidden>
-              ↓
-            </span>
-            <span className="font-display text-lg font-semibold text-ink">
-              Drag here to save
-            </span>
-          </button>
-        </div>
-      );
-    },
-  ),
-);
 
 /* ---------------- accessibility menu ---------------- */
 
@@ -1796,24 +1432,6 @@ function PinIcon() {
     </svg>
   );
 }
-
-function BookmarkIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z" />
-    </svg>
-  );
-}
-
 function AccessibilityIcon() {
   return (
     <svg
