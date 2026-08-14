@@ -245,7 +245,7 @@ export const CardDropTab = memo(function CardDropTab() {
 
 export const SaveZone = memo(
   forwardRef<
-    HTMLDivElement,
+    HTMLButtonElement,
     {
       active: boolean;
       count: number;
@@ -254,59 +254,73 @@ export const SaveZone = memo(
     }
   >(function SaveZone({ active, count, onSave, onOpen }, ref) {
     return (
-      <div className="absolute bottom-8 left-1/2 z-30 -translate-x-1/2">
-        <div className="relative">
-          <button
-            ref={ref as never}
-            type="button"
-            onClick={onSave}
-            // The big control saves; the badge opens the list. Naming each for
-            // what it does, since "Saved Events" on the save button read as the
-            // way to see them.
-            aria-label="Save this program"
-            className="flex h-[104px] w-[min(88vw,420px)] flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors"
-            style={{
-              borderColor: active ? SKY_DEEP : "#B9B7C4",
-              background: active ? SKY_TINT : "#F2F1F5",
-            }}
-          >
-            <span className="flex items-center gap-2.5">
-              <BookmarkIcon filled={active} />
-              <span className="font-display text-2xl font-bold text-ink">
-                Saved Events
-              </span>
+      <div className="absolute bottom-10 left-1/2 z-30 flex -translate-x-1/2 items-stretch gap-7">
+        {/* Where a program lands. Dashed because it is a place to drop something,
+            and it stays dashed while active — only what's inside it fills in. */}
+        <button
+          ref={ref}
+          type="button"
+          onClick={onSave}
+          aria-label="Save this program"
+          className="flex h-[136px] w-[min(58vw,344px)] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#B9B7C4] transition-colors"
+          style={{ background: active ? SKY_TINT : "#F2F1F5" }}
+        >
+          <span className="flex items-center gap-3">
+            <BookmarkIcon
+              size={30}
+              color={active ? SKY_DEEP : "#1A1A1A"}
+              filled={active}
+            />
+            <span className="font-display text-[28px] font-bold leading-none text-ink">
+              Save Event
             </span>
-            <span className="mt-1 text-base text-muted">
-              Use ↓ or drag down to save event
-            </span>
-          </button>
+          </span>
+          <span className="mt-2.5 text-lg text-muted">
+            Use ↓ or drag event down
+          </span>
+        </button>
 
-          {/* The count doubles as the way into the saved list — the design has
-              no separate button for it, and a badge showing what you have is
-              the obvious thing to press to see it. */}
+        {/* The way into the saved list, its own control rather than a badge
+            pinned to the save zone — pressing the thing you just dropped into
+            to un-drop it was the ambiguity worth spending a button on. */}
+        <div className="relative shrink-0">
           <button
             type="button"
             onClick={onOpen}
             aria-label={`Open saved events, ${count} saved`}
-            className="absolute -right-4 -top-6 grid h-14 w-14 place-items-center rounded-full font-display text-2xl font-bold text-ink transition-transform hover:scale-105"
+            className="grid h-full w-[104px] place-items-center rounded-2xl border-2 border-[#D8D6DF] bg-white transition-transform hover:scale-[1.04]"
+          >
+            <BookmarkIcon size={46} color={CYAN} filled={false} />
+          </button>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-5 -top-5 grid h-14 w-14 place-items-center rounded-full font-display text-2xl font-bold text-ink"
             style={{ background: BADGE }}
           >
             {count}
-          </button>
+          </span>
         </div>
       </div>
     );
   }),
 );
 
-function BookmarkIcon({ filled }: { filled: boolean }) {
+function BookmarkIcon({
+  size,
+  color,
+  filled,
+}: {
+  size: number;
+  color: string;
+  filled: boolean;
+}) {
   return (
     <svg
-      width="22"
-      height="22"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
-      fill={filled ? SKY_DEEP : "none"}
-      stroke={filled ? SKY_DEEP : "currentColor"}
+      fill={filled ? color : "none"}
+      stroke={color}
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"

@@ -161,7 +161,7 @@ export function EventsView({
   const peekX = useMotionValue(0);
 
   const cardWrapRef = useRef<HTMLDivElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null); // fly target: the drop zone
+  const dropRef = useRef<HTMLButtonElement>(null); // fly target: the drop zone
   const peekSideRef = useRef<"left" | "right" | null>(null);
 
   // Which side zone is currently dwelling + how far along (0→1), for its UI.
