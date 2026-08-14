@@ -1035,7 +1035,7 @@ export function EventsView({
                   onPointerDown={() => startSaveHold(HOLD_TOUCH_MS)}
                   onPointerUp={cancelSaveHold}
                   onPointerCancel={cancelSaveHold}
-                  className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] bg-card shadow-card active:cursor-grabbing"
+                  className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] border border-[#D6D4E0] bg-card shadow-[0_2px_10px_rgba(20,16,40,0.05)] active:cursor-grabbing"
                 >
                   <WideEventCard event={current} saved={alreadySaved} />
                   <HoldBadge progress={holdProgress} />
@@ -1412,13 +1412,13 @@ const SideZone = memo(function SideZone({
             e.stopPropagation();
             if (!disabled) onClick();
           }}
-          className="grid h-16 w-16 place-items-center rounded-full border-2 border-edge bg-white text-3xl text-ink shadow-card transition-transform"
+          className="grid h-[104px] w-[104px] place-items-center rounded-full border border-[#CFCDD8] bg-white/60 text-5xl font-light text-ink transition-transform"
           style={{ transform: active ? "scale(1.08)" : "none" }}
         >
           <span aria-hidden>{isLeft ? "←" : "→"}</span>
         </button>
         <span
-          className="font-display text-lg font-semibold text-ink"
+          className="font-display text-2xl font-semibold text-ink"
           aria-hidden
         >
           {isLeft ? "Back" : "Next"}

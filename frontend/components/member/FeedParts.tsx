@@ -40,7 +40,7 @@ export const BucketStepper = memo(function BucketStepper({
         {buckets.length > 1 && (
           <div
             aria-hidden
-            className="absolute left-6 right-6 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#D9D7E0]"
+            className="absolute left-7 right-7 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#D2D0DA]"
           />
         )}
         {buckets.map((bucket) => {
@@ -54,7 +54,7 @@ export const BucketStepper = memo(function BucketStepper({
               className="relative z-10 flex flex-col items-center"
             >
               <span
-                className="grid h-12 w-12 place-items-center overflow-hidden rounded-full border-[3px] bg-white font-display text-sm font-bold transition-transform"
+                className="grid h-14 w-14 place-items-center overflow-hidden rounded-full border-[4px] bg-white font-display text-base font-bold transition-transform"
                 style={{
                   borderColor: bucket.color,
                   color: bucket.color,
@@ -77,7 +77,7 @@ export const BucketStepper = memo(function BucketStepper({
               <span className="sr-only">{bucket.label}</span>
               <span
                 aria-hidden
-                className="mt-1.5 h-2 w-2 rounded-full transition-opacity"
+                className="mt-2 h-2.5 w-2.5 rounded-full transition-opacity"
                 style={{
                   background: bucket.color,
                   opacity: active ? 1 : 0,
@@ -228,10 +228,10 @@ export const SaveZone = memo(
         {/* The tab that the card drops into, tucked behind the box. */}
         <div
           aria-hidden
-          className="absolute -top-9 left-1/2 grid h-16 w-28 -translate-x-1/2 place-items-end justify-center rounded-b-[3rem] pb-2"
+          className="absolute -top-10 left-1/2 grid h-[72px] w-[168px] -translate-x-1/2 place-items-end justify-center rounded-b-[5rem] pb-2.5"
           style={{ background: SKY }}
         >
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
             <path
               d="M6 9l6 6 6-6"
               stroke="#0B3A4A"
