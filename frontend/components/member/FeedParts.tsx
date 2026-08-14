@@ -131,8 +131,11 @@ export const BucketStepper = memo(function BucketStepper({
                 style={{
                   borderColor: bucket.color,
                   color: bucket.color,
-                  // A wash, not a fill — logos and initials still have to read.
-                  background: reached ? `${bucket.color}24` : "#FFFFFF",
+                  // Opaque, not translucent. A hex with an alpha channel let
+                  // the rail show straight through the ring and cut across the
+                  // logo inside it. Blended against white instead: the same
+                  // wash to look at, but it still hides what is behind it.
+                  background: reached ? wash(bucket.color) : "#FFFFFF",
                   transform: `scale(${scaleFor(bucket.id)})`,
                   boxShadow:
                     hovered === bucket.id
@@ -169,6 +172,22 @@ export const BucketStepper = memo(function BucketStepper({
     </div>
   );
 });
+
+/**
+ * A bucket's colour laid over white, as an opaque value.
+ *
+ * The reached-ring wash has to stay opaque: the rail runs behind the rings, so
+ * anything see-through lets the bar draw a line across the organization's logo.
+ */
+function wash(hex: string, amount = 0.14): string {
+  const match = /^#?([\da-f]{6})$/i.exec(hex.trim());
+  if (!match) return "#FFFFFF";
+  const n = parseInt(match[1], 16);
+  const toward = (c: number) => Math.round(255 + (c - 255) * amount);
+  return `rgb(${toward((n >> 16) & 255)}, ${toward((n >> 8) & 255)}, ${toward(
+    n & 255,
+  )})`;
+}
 
 function initials(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
@@ -215,32 +234,40 @@ export const WideEventCard = memo(function WideEventCard({
           {event.title}
         </h2>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 text-lg text-ink">
+        {/* The date, how often it repeats and which session it is are one
+            sentence, not three boxes side by side. They used to be separate
+            flex items, so when the column got narrow each wrapped its own text
+            independently and the line broke into ragged columns —
+            "September 5,  · Monthly (1st   · 1 of" across the top and
+            "2026          Saturday)          6" underneath. Now only the icon
+            is laid out; the text is ordinary inline flow and wraps like prose. */}
+        <div className="flex shrink-0 flex-col gap-1 text-lg text-ink">
           {event.starts_at && (
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarIcon />
-              {new Date(event.starts_at).toLocaleDateString(undefined, {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
-              {/* The feed shows a repeating program once, at its next date, so
-                  the card has to say the date isn't the whole story. */}
-              {repeats && (
-                <span className="text-muted">{` · ${repeats}`}</span>
-              )}
-              {/* Which session of the run this date is. It advances by itself:
-                  once this week's has finished the card moves to the next one
-                  and the count moves with it. */}
-              {session && (
-                <span className="text-muted">{` · ${session}`}</span>
-              )}
+            <span className="flex items-start gap-1.5">
+              <span className="mt-[5px] shrink-0">
+                <CalendarIcon />
+              </span>
+              <span>
+                {new Date(event.starts_at).toLocaleDateString(undefined, {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+                {repeats && (
+                  <span className="text-muted">{` · ${repeats}`}</span>
+                )}
+                {session && (
+                  <span className="text-muted">{` · ${session}`}</span>
+                )}
+              </span>
             </span>
           )}
           {event.location && (
-            <span className="inline-flex items-center gap-1.5">
-              <PinIcon />
-              {event.location}
+            <span className="flex items-start gap-1.5">
+              <span className="mt-[5px] shrink-0">
+                <PinIcon />
+              </span>
+              <span>{event.location}</span>
             </span>
           )}
         </div>
