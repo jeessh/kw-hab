@@ -16,8 +16,7 @@ export type DimensionKey =
   | "eventType"
   | "activityType"
   | "age"
-  | "cost"
-  | "all";
+  | "cost";
 
 export type Dimension = {
   key: DimensionKey;
@@ -36,6 +35,7 @@ export type Dimension = {
   };
 };
 
+/** Used where a bucket has no colour of its own to carry. */
 const GREY = "#8A8AA0";
 
 /** Stable colour per bucket id, so a bucket keeps its colour across renders. */
@@ -131,7 +131,7 @@ export const DIMENSIONS: Dimension[] = [
     // Open-ended on either side: min 55 with no max reads as "55 and up".
     bucket: (e) => {
       if (e.min_age == null && e.max_age == null)
-        return { id: "any", label: "All ages", color: "#8A8AA0" };
+        return { id: "any", label: "All ages", color: GREY };
       if (e.max_age != null && e.max_age <= 17)
         return { id: "youth", label: "Under 18", color: "#F59E0B" };
       if (e.min_age != null && e.min_age >= 55)
@@ -150,13 +150,6 @@ export const DIMENSIONS: Dimension[] = [
       if (e.is_free) return { id: "free", label: "Free", color: "#22C55E" };
       return { id: "paid", label: e.price_label || "Paid", color: "#F59E0B" };
     },
-  },
-  {
-    key: "all",
-    label: "All Events",
-    heading: "All Events",
-    emoji: "⚪",
-    bucket: () => ({ id: "all", label: "Everything", color: GREY }),
   },
 ];
 

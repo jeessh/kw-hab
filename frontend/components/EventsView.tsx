@@ -253,14 +253,23 @@ export function EventsView({
     [dimensionKey],
   );
 
-  // The order Next and Back walk: one card per program rather than one per
-  // date, then each stepper bucket's programs together in the order the stepper
-  // shows them. The grid keeps `scoredFeed` — it lays programs out under day
-  // headings, where a repeating program belongs on each day it runs, and a
-  // route through the buckets would only scramble the days.
+  // One card per program rather than one per date, in both views.
+  //
+  // The grid used to keep every date, which was right while it was sectioned by
+  // day — a weekly program belongs on each day it runs, and the heading above
+  // told them apart. Sectioning by organization or topic took that away, and
+  // the same program repeated twelve times down a section with nothing to
+  // distinguish the copies.
+  const programs = useMemo(
+    () => oneCardPerProgram(scoredFeed),
+    [scoredFeed],
+  );
+
+  // The order Next and Back walk: each stepper bucket's programs together, in
+  // the order the stepper shows them.
   const feed = useMemo(
-    () => groupByBucket(oneCardPerProgram(scoredFeed), dimension),
-    [scoredFeed, dimension],
+    () => groupByBucket(programs, dimension),
+    [programs, dimension],
   );
 
   // A filter change can shorten the feed out from under the cursor.
@@ -1073,7 +1082,8 @@ export function EventsView({
 
             {viewMode === "grid" ? (
               <GridFeed
-                events={scoredFeed}
+                events={programs}
+                dimension={dimension}
                 saved={saved}
                 query={query}
                 onOpen={setDetailFor}
