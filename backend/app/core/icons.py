@@ -1,23 +1,28 @@
 import secrets
 
-# Placeholder icon slugs. Swap/extend with your real icon set later.
-# Members pick an ordered set of 3, so with 40 icons there are
-# 40 * 39 * 38 = 59,280 unique combinations.
+# The twelve icons a member can choose from.
+#
+# Deliberately small and deliberately distinct — no two that could be confused
+# at a glance or described by the same word. This is a key someone has to
+# recognise, not read.
 ICON_POOL = [
-    "tree", "cat", "apple", "sun", "moon", "star",
-    "dog", "fish", "bird", "leaf", "flower", "house",
-    "car", "boat", "heart", "cloud", "rain", "snow",
-    "fire", "key", "book", "ball", "cake", "bell",
-    "guitar", "rocket", "crown", "gift", "camera", "clock",
-    "umbrella", "balloon", "anchor", "diamond", "mushroom", "cactus",
-    "grapes", "lemon", "pizza", "hat",
+    "tree", "cat", "apple", "sun", "moon", "dog",
+    "fish", "flower", "house", "car", "heart", "star",
 ]
 
-ICON_COUNT = 3
+# One icon, not three.
+#
+# Chosen knowingly: this makes the whole keyspace twelve per name, so anyone who
+# knows a member's name can reach their account in at most twelve tries. The
+# rate limiter in core/rate_limit.py is now the only thing standing between a
+# guessed name and someone else's saved programs — if this ever carries data
+# worth protecting, that trade has to be revisited, not the limiter tuned.
+
+ICON_COUNT = 1
 
 
 def random_icon_set() -> list[str]:
-    """Return an ordered list of 3 distinct icon slugs.
+    """Return the member's icon key, as a list.
 
     The icon set is effectively the member's password, so draw it from a CSPRNG
     (secrets) rather than the Mersenne-Twister default in `random`.
@@ -33,9 +38,12 @@ def validate_icon_selection(icons: list[str]) -> list[str]:
     Raises ValueError with a member-friendly message on any problem.
     """
     if len(icons) != ICON_COUNT:
-        raise ValueError(f"Choose exactly {ICON_COUNT} icons.")
+        raise ValueError(
+            "Choose your icon." if ICON_COUNT == 1
+            else f"Choose exactly {ICON_COUNT} icons."
+        )
     if len(set(icons)) != ICON_COUNT:
-        raise ValueError("Choose 3 different icons.")
+        raise ValueError("Choose different icons.")
     unknown = [c for c in icons if c not in ICON_POOL]
     if unknown:
         raise ValueError(f"Unknown icons: {', '.join(unknown)}")
