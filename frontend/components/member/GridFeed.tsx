@@ -2,58 +2,11 @@
 
 import { memo, useMemo } from "react";
 import type { Event } from "@/lib/api";
+import type { Dimension } from "@/lib/dimensions";
+import { repeatLabel } from "@/lib/recurrence";
 import { CYAN, SKY_DEEP } from "@/components/member/FeedParts";
 
 const TAG = "#F5C449"; // organization pill on the card image
-
-/* ---------------- day grouping ---------------- */
-
-const startOfDay = (d: Date) =>
-  new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-
-/**
- * "Today | Wednesday, August 12" — the relative word first, because it answers
- * "can I go?" faster than a date does, with the date after it for anyone
- * planning rather than deciding.
- */
-function dayHeading(ms: number, todayMs: number): string {
-  const dayMs = 86_400_000;
-  const diff = Math.round((ms - todayMs) / dayMs);
-  const full = new Date(ms).toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-  if (diff === 0) return `Today | ${full}`;
-  if (diff === 1) return `Tomorrow | ${full}`;
-  return full;
-}
-
-type Day = { key: number; heading: string; events: Event[] };
-
-function groupByDay(events: Event[]): { days: Day[]; undated: Event[] } {
-  const todayMs = startOfDay(new Date());
-  const byDay = new Map<number, Event[]>();
-  const undated: Event[] = [];
-  for (const ev of events) {
-    if (!ev.starts_at) {
-      undated.push(ev);
-      continue;
-    }
-    const key = startOfDay(new Date(ev.starts_at));
-    const list = byDay.get(key);
-    if (list) list.push(ev);
-    else byDay.set(key, [ev]);
-  }
-  const days = [...byDay.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([key, evs]) => ({
-      key,
-      heading: dayHeading(key, todayMs),
-      events: evs,
-    }));
-  return { days, undated };
-}
 
 /* ---------------- card ---------------- */
 
@@ -100,12 +53,26 @@ export const GridCard = memo(function GridCard({
           </h3>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
             {event.starts_at && (
+              // Date as well as time. The grid used to be sectioned by day, so
+              // the heading above carried the date and the card only needed the
+              // hour; sectioning by organization or topic took that away.
               <span className="inline-flex items-center gap-1.5">
                 <ClockIcon />
+                {new Date(event.starts_at).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+                {", "}
                 {new Date(event.starts_at).toLocaleTimeString(undefined, {
                   hour: "numeric",
                   minute: "2-digit",
                 })}
+              </span>
+            )}
+            {repeatLabel(event.recurrence) && (
+              <span className="inline-flex items-center gap-1.5">
+                <RepeatIcon />
+                {repeatLabel(event.recurrence)}
               </span>
             )}
             {event.location && (
@@ -124,7 +91,12 @@ export const GridCard = memo(function GridCard({
         onClick={() => onToggleSave(event)}
         aria-pressed={saved}
         aria-label={saved ? `Remove ${event.title}` : `Save ${event.title}`}
-        className="absolute bottom-[62px] right-3 grid h-9 w-9 place-items-center rounded-lg transition-transform hover:scale-110"
+        // Anchored to the top of the text block (the image is a fixed 152px),
+        // beside the title. It used to hang off the bottom edge by a measured
+        // offset, which only lined up while every card was the same height —
+        // adding the date and how often it repeats made them all different, and
+        // the bookmark drifted into the middle of the text.
+        className="absolute right-3 top-[164px] grid h-9 w-9 place-items-center rounded-lg transition-transform hover:scale-110"
       >
         <BookmarkIcon filled={saved} />
       </button>
@@ -168,6 +140,28 @@ function ClockIcon() {
   );
 }
 
+function RepeatIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+      aria-hidden
+    >
+      <path d="M17 2l4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="M7 22l-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </svg>
+  );
+}
+
 function PinIcon() {
   return (
     <svg
@@ -189,14 +183,44 @@ function PinIcon() {
 
 /* ---------------- the grid ---------------- */
 
+/**
+ * The grid's sections, from the "See events by" choice.
+ *
+ * The dropdown sat above this grid doing nothing at all — picking Activity Type
+ * where Non-Profit Organization had been returned a byte-identical list. It
+ * only ever drove the one-at-a-time view's stepper.
+ *
+ * It groups, it does not filter: every program is in exactly one section and
+ * none are removed, which is the same rule the stepper follows.
+ */
+function groupByDimension(
+  events: Event[],
+  dimension: Dimension,
+): { id: string; label: string; color: string; events: Event[] }[] {
+  const sections = new Map<
+    string,
+    { id: string; label: string; color: string; events: Event[] }
+  >();
+  for (const event of events) {
+    const b = dimension.bucket(event);
+    const found = sections.get(b.id);
+    if (found) found.events.push(event);
+    else sections.set(b.id, { ...b, events: [event] });
+  }
+  return [...sections.values()];
+}
+
 export const GridFeed = memo(function GridFeed({
   events,
+  dimension,
   saved,
   query,
   onOpen,
   onToggleSave,
 }: {
   events: Event[];
+  /** Which "See events by" choice sections the grid. */
+  dimension: Dimension;
   saved: Set<string>;
   query: string;
   onOpen: (event: Event) => void;
@@ -214,7 +238,10 @@ export const GridFeed = memo(function GridFeed({
     );
   }, [events, query]);
 
-  const { days, undated } = useMemo(() => groupByDay(filtered), [filtered]);
+  const sections = useMemo(
+    () => groupByDimension(filtered, dimension),
+    [filtered, dimension],
+  );
 
   if (filtered.length === 0) {
     return (
@@ -226,19 +253,19 @@ export const GridFeed = memo(function GridFeed({
 
   return (
     <div className="w-full max-w-6xl flex-1 overflow-y-auto pb-10">
-      {days.map((day) => (
-        <section key={day.key} className="mb-10">
-          <h2 className="mb-4 font-display text-2xl text-ink">
-            <span className="font-bold">{day.heading.split(" | ")[0]}</span>
-            {day.heading.includes(" | ") && (
-              <span className="text-muted">
-                {" | "}
-                {day.heading.split(" | ")[1]}
-              </span>
-            )}
+      {sections.map((section) => (
+        <section key={section.id} className="mb-10">
+          <h2 className="mb-4 flex items-baseline gap-3 font-display text-2xl text-ink">
+            <span
+              aria-hidden
+              className="inline-block h-3 w-3 shrink-0 translate-y-px rounded-full"
+              style={{ background: section.color }}
+            />
+            <span className="font-bold">{section.label}</span>
+            <span className="text-muted">{section.events.length}</span>
           </h2>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {day.events.map((ev) => (
+            {section.events.map((ev) => (
               <GridCard
                 key={ev.id}
                 event={ev}
@@ -250,25 +277,6 @@ export const GridFeed = memo(function GridFeed({
           </div>
         </section>
       ))}
-
-      {undated.length > 0 && (
-        <section className="mb-10">
-          <h2 className="mb-4 font-display text-2xl font-bold text-ink">
-            Date to be announced
-          </h2>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {undated.map((ev) => (
-              <GridCard
-                key={ev.id}
-                event={ev}
-                saved={saved.has(ev.id)}
-                onOpen={onOpen}
-                onToggleSave={onToggleSave}
-              />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 });
