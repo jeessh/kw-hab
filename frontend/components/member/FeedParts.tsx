@@ -34,7 +34,9 @@ export const BucketStepper = memo(function BucketStepper({
 }) {
   if (buckets.length === 0) return null;
   return (
-    <div className="mt-5 w-full max-w-3xl">
+    // Wider than the card, which is what the design does: the rail reads as the
+    // span of the whole feed, with the card sitting inside it.
+    <div className="mt-7 w-full max-w-[950px]">
       <div className="relative flex items-center justify-between">
         {/* The rail sits behind the dots and stops short of both ends. With a
             single bucket there is nothing to connect, and a rail running off
@@ -105,14 +107,19 @@ function initials(label: string): string {
 export const WideEventCard = memo(function WideEventCard({
   event,
   saved,
+  onExpand,
 }: {
   event: Event;
   saved: boolean;
+  /** Opens the full listing over the feed. */
+  onExpand: (event: Event) => void;
 }) {
   const repeats = repeatLabel(event.recurrence);
   return (
-    <div className="flex h-full gap-6 p-5">
-      <div className="relative aspect-square h-full max-h-[300px] shrink-0 overflow-hidden rounded-2xl bg-edge">
+    <div className="flex h-full gap-10 p-10">
+      {/* Square, and as tall as the card allows — the design gives the photo
+          equal footing with the text rather than a thumbnail beside it. */}
+      <div className="relative aspect-square h-full shrink-0 overflow-hidden rounded-2xl bg-edge">
         {event.cover_image_url && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -124,12 +131,15 @@ export const WideEventCard = memo(function WideEventCard({
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <h2 className="font-display text-3xl font-extrabold leading-tight text-ink">
+      {/* overflow-hidden and a shrinkable description: a long location wraps
+          the meta row onto two lines, and the design's proportions leave no
+          slack for it. The description gives way; the button never does. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden">
+        <h2 className="shrink-0 font-display text-[34px] font-extrabold leading-[1.05] text-ink">
           {event.title}
         </h2>
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-base text-ink">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 text-lg text-ink">
           {event.starts_at && (
             <span className="inline-flex items-center gap-1.5">
               <CalendarIcon />
@@ -154,22 +164,30 @@ export const WideEventCard = memo(function WideEventCard({
         </div>
 
         {event.description && (
-          <p className="line-clamp-3 text-base leading-relaxed text-muted">
+          // Two lines, not the design's three: on a laptop-height window the
+          // card is shorter than the design's and a three-line clamp got cut
+          // by the overflow guard instead of ellipsised, which reads as a bug.
+          // The rest is one press away — that is what Expand is for.
+          <p className="line-clamp-2 min-h-0 text-[18px] leading-[1.5] text-muted">
             {event.description}
           </p>
         )}
 
-        <div className="mt-2 flex items-center gap-3">
-          <Link
-            href={`/events/${event.id}`}
-            // Stops a drag that began on the link from being treated as a click.
+        <div className="mt-auto flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            // The full listing opens over the feed rather than at its own URL.
+            // Leaving the page to read more meant coming back to a feed that
+            // had forgotten which program you were on.
+            onClick={() => onExpand(event)}
             draggable={false}
+            // Stops a drag that began on the button being treated as a click.
             onPointerDown={(e) => e.stopPropagation()}
-            className="rounded-lg px-6 py-2.5 text-lg font-medium text-ink transition-transform hover:scale-[1.03]"
+            className="rounded-lg px-5 py-2.5 text-lg font-medium text-ink transition-transform hover:scale-[1.03]"
             style={{ background: SKY }}
           >
-            See more
-          </Link>
+            Expand
+          </button>
           {saved && (
             <span className="font-semibold" style={{ color: SKY_DEEP }}>
               Saved ✓

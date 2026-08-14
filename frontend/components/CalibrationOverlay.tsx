@@ -4,22 +4,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { HeadProxy } from "@/lib/headPose";
 
-// 9 points in a 3×3 grid (viewport fractions), ordered top-left → bottom-right.
+// Four corners and the centre, as viewport fractions.
+//
+// This was a 3×3 grid, which asked for nine head turns to fit a model with
+// three unknowns per axis (headPose.ts maps x = a·yaw + b·pitch + c). Five
+// points still over-determine it, and the corners are the informative ones —
+// they carry the most leverage, where the mid-edge points of a grid mostly
+// repeat what the corners already said. Nine dots bought precision the model
+// can't represent, at four extra head turns for someone who may find each one
+// difficult.
+//
+// Ordered corner → opposite corner so consecutive dots are always far apart,
+// which is what MOVE_MIN wants: the head has to genuinely move between
+// captures, or one long hold logs several dots at the same pose.
 const POINTS = [
   [0.1, 0.1],
-  [0.5, 0.1],
-  [0.9, 0.1],
-  [0.1, 0.5],
-  [0.5, 0.5],
-  [0.9, 0.5],
-  [0.1, 0.9],
-  [0.5, 0.9],
   [0.9, 0.9],
+  [0.9, 0.1],
+  [0.1, 0.9],
+  [0.5, 0.5],
 ] as const;
 
 const SAMPLES_PER_POINT = 5; // recordings captured per dot
 const SAMPLE_GAP_MS = 60;
-const AUTO_HOLD_MS = 1000; // head steady this long → auto-capture the dot
+// Head steady this long → auto-capture. Shorter than it was: the wait is paid
+// once per dot, so it and the dot count multiply. Still long enough that
+// passing over a dot on the way to another doesn't capture it.
+const AUTO_HOLD_MS = 700;
 // Head-proxy (yaw/pitch) tolerances: how still counts as "steady", and how far
 // the head must move after a capture before the next dot can start arming
 // (stops one long hold from capturing several dots with identical poses).

@@ -9,6 +9,50 @@ export type SpeechCommandHandlers = {
   onSettings?: () => void;
 };
 
+/**
+ * What each command sounds like — including what the recognizer mishears it as.
+ *
+ * The engine is tuned for dictating prose, not for a four-word vocabulary, so
+ * it happily returns "text" for "next" and "safe" for "save": real words, high
+ * confidence, wrong. Against open dictation that's unfixable, but here the
+ * vocabulary is closed and tiny, so the near-misses are enumerable — and a
+ * command that needs saying three times is worse than no voice control at all
+ * for the people this exists for.
+ *
+ * Ordered: the first entry whose pattern appears wins, and `next`/`back` come
+ * first because they're the ones said most.
+ */
+const COMMANDS: { key: keyof SpeechCommandHandlers; test: RegExp }[] = [
+  // next · necks, nex, text, tex, "next event"
+  { key: "onNext", test: /\b(next|necks|nex|text|tex|nixed)\b/ },
+  // back · bak, bag, buck, plus the synonyms people reach for
+  { key: "onBack", test: /\b(back|bak|bag|buck|previous|prev|last)\b/ },
+  // save · safe, save it, "save event"
+  { key: "onAdd", test: /\b(save|safe|saved|save it|attend|register|add)\b/ },
+  // list · least, lists, "my list"
+  { key: "onSettings", test: /\b(list|least|lists|listed|settings)\b/ },
+];
+
+/**
+ * The command in a phrase, or null.
+ *
+ * Scans for the LAST match rather than the first: someone correcting themselves
+ * says "back — no, next", and the thing they landed on is what they meant.
+ */
+export function matchCommand(
+  transcript: string,
+): keyof SpeechCommandHandlers | null {
+  const t = transcript.toLowerCase().trim();
+  let best: { key: keyof SpeechCommandHandlers; at: number } | null = null;
+  for (const { key, test } of COMMANDS) {
+    const m = t.match(test);
+    if (m && m.index !== undefined && (!best || m.index > best.at)) {
+      best = { key, at: m.index };
+    }
+  }
+  return best?.key ?? null;
+}
+
 // The Web Speech API is still vendor-prefixed and untyped in the DOM lib.
 type AnyRecognition = any;
 
@@ -46,6 +90,11 @@ export function useSpeechCommands(
   // Latched on a permanent error (mic denied, no device) to stop the
   // onend→start→onerror hot-loop. Reset each time `enabled` re-subscribes.
   const hardStopRef = useRef(false);
+  // One action per utterance: interim results mean the same "next" arrives
+  // several times as the engine sharpens its guess, and acting on each would
+  // skip four programs for one word.
+  const firedRef = useRef(false);
+  const firedForRef = useRef(-1);
 
   useEffect(() => {
     setSupported(!!RecognitionCtor());
@@ -60,23 +109,41 @@ export function useSpeechCommands(
     const rec: AnyRecognition = new Ctor();
     recRef.current = rec;
     rec.continuous = true;
-    rec.interimResults = false;
+    // Interim results fire while the word is still being said, so a command
+    // lands in a couple of hundred milliseconds instead of waiting for the
+    // engine to decide the utterance has ended. `firedRef` keeps the interim
+    // and the final result for one utterance from acting twice.
+    rec.interimResults = true;
+    // The top guess is the most fluent English, not the likeliest command —
+    // "next" often loses to "text". Reading the alternatives lets a correct
+    // lower-ranked guess win.
+    rec.maxAlternatives = 5;
     rec.lang = "en-US";
 
     rec.onstart = () => setListening(true);
     rec.onresult = (e: any) => {
       // Ignore anything captured while muted (that's the TTS bot talking).
       if (pausedRef.current) return;
-      const t = String(e.results[e.results.length - 1][0].transcript || "")
-        .toLowerCase()
-        .trim();
-      setLastHeard(t);
-      const h = handlersRef.current;
-      // "next event" contains "next", so this covers both phrasings.
-      if (/\bnext\b/.test(t)) h.onNext?.();
-      else if (/\b(back|previous|prev)\b/.test(t)) h.onBack?.();
-      else if (/\b(add|attend|register)\b/.test(t)) h.onAdd?.();
-      else if (/\bsettings\b/.test(t)) h.onSettings?.();
+      const result = e.results[e.results.length - 1];
+
+      // Every alternative the engine offered for this utterance, best first.
+      const alternatives: string[] = [];
+      for (let i = 0; i < result.length; i++) {
+        const t = String(result[i]?.transcript || "").toLowerCase().trim();
+        if (t) alternatives.push(t);
+      }
+      if (alternatives.length === 0) return;
+      setLastHeard(alternatives[0]);
+
+      // A new utterance re-arms; the index identifies it across interim events.
+      if (e.resultIndex !== firedForRef.current) firedRef.current = false;
+      firedForRef.current = e.resultIndex;
+      if (firedRef.current) return;
+
+      const key = alternatives.map(matchCommand).find(Boolean);
+      if (!key) return;
+      firedRef.current = true;
+      handlersRef.current[key]?.();
     };
     rec.onend = () => {
       setListening(false);

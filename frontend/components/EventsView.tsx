@@ -1060,7 +1060,7 @@ export function EventsView({
                     );
                   }}
                 />
-                <p className="mt-3 font-display text-xl font-semibold text-ink">
+                <p className="mt-5 font-display text-2xl font-semibold text-ink">
                   {activeBucket.label}
                 </p>
                 <BucketStepper
@@ -1110,7 +1110,11 @@ export function EventsView({
                   transparent flanks pass hover through; the card re-enables events. */}
               <motion.div
                 style={{ x: peekX }}
-                className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
+                // pb-14 is the drop tab's room. It hangs off the bottom of the
+                // card, so without reserving for it the tab disappears behind
+                // the save bar on a short window — exactly where the gesture it
+                // advertises has to land.
+                className="pointer-events-none absolute inset-0 z-30 grid place-items-center pb-14"
               >
                 <motion.div
                   ref={cardWrapRef}
@@ -1121,7 +1125,11 @@ export function EventsView({
                     opacity: cardOpacity,
                     zIndex: 30,
                   }}
-                  className="pointer-events-auto relative aspect-[2.3/1] w-full max-w-[880px]"
+                  // Height-led, not width-led: the design's card is 37% of a
+                  // tall window, and holding its width on a short one grew it to
+                  // 46% and pushed the tab into the save bar. Width follows the
+                  // ratio, up to the design's 880.
+                  className="pointer-events-auto relative aspect-[2.3/1] h-full max-h-[382px] w-auto max-w-[880px]"
                 >
                 {/* Focused card slides in from the travel direction on next/back.
                     Enter-only (keyed by id) so it won't fight the drag/fly transforms. */}
@@ -1172,7 +1180,11 @@ export function EventsView({
                   {/* Behind the card so only the rounded tongue shows. */}
                   <CardDropTab />
                   <div className="relative h-full w-full overflow-hidden rounded-[28px] border-[1.5px] border-[#9A9A9A] bg-white">
-                    <WideEventCard event={current} saved={alreadySaved} />
+                    <WideEventCard
+                      event={current}
+                      saved={alreadySaved}
+                      onExpand={setDetailFor}
+                    />
                     <HoldBadge progress={holdProgress} />
                     <AnimatePresence>
                       {confirming && <ConfirmSweep />}
@@ -1405,7 +1417,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
             />
             <MenuToggle
               label="Speech-to-text (voice control)"
-              hint={'Say “next”, “back”, “add”, or “settings”.'}
+              hint={'Say “next”, “back”, “save”, or “list”.'}
               checked={voiceEnabled}
               disabled={!voiceSupported}
               disabledHint="Not supported here (try Chrome or Edge)."
@@ -1586,13 +1598,13 @@ const SideZone = memo(function SideZone({
             e.stopPropagation();
             if (!disabled) onClick();
           }}
-          className="grid h-[124px] w-[152px] place-items-center rounded-full border-[1.5px] border-[#9A9A9A] bg-transparent text-5xl font-light text-[#5C5C5C] transition-transform"
+          className="grid h-[86px] w-[152px] place-items-center rounded-full border-[1.5px] border-[#9A9A9A] bg-transparent text-6xl font-light leading-none text-[#5C5C5C] transition-transform"
           style={{ transform: active ? "scale(1.08)" : "none" }}
         >
           <span aria-hidden>{isLeft ? "←" : "→"}</span>
         </button>
         <span
-          className="font-display text-2xl font-medium text-[#424242]"
+          className="font-display text-3xl font-medium text-[#424242]"
           aria-hidden
         >
           {isLeft ? "Back" : "Next"}
