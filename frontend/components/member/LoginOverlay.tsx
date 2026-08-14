@@ -131,11 +131,12 @@ export function LoginOverlay({
         ) : (
           <>
             <p className="mt-4 text-xl text-ink">Choose your personal icon.</p>
-            {/* The design shows twelve tiles; the real pool is larger and has
-                to stay that way — the icon set IS the password, and shrinking
-                it to fit a mockup would shrink the keyspace with it. Two rows
-                are visible, the rest scroll. */}
-            <div className="mt-6 grid max-h-[184px] grid-cols-6 gap-3 overflow-y-auto pr-1">
+            {/* Twelve tiles visible, as the design has it. The pool behind
+                them stays whole: the icon set IS the password, and 37 members
+                already hold keys drawn from all of it — trimming it to fit the
+                frame would lock most of them out and cut the keyspace from
+                ~59,000 to 1,320. Exactly two rows, then it scrolls. */}
+            <div className="mt-6 grid max-h-[152px] grid-cols-6 gap-3 overflow-y-auto">
               {ALL_ICONS.map((slug) => {
                 const order = picked.indexOf(slug);
                 const isPicked = order !== -1;
@@ -175,6 +176,22 @@ export function LoginOverlay({
               })}
             </div>
           </>
+        )}
+
+        {step === "icons" && ALL_ICONS.length > 12 && (
+          // A hidden scroll is a trap for anyone who doesn't expect one, and
+          // the icon they need may be below the fold.
+          <div className="mt-1 flex justify-center text-muted" aria-hidden>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
         )}
 
         <p className="mt-5 text-base text-muted">Don&apos;t have an account?</p>

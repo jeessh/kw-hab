@@ -6,10 +6,11 @@ import type { Event } from "@/lib/api";
 import type { Bucket } from "@/lib/dimensions";
 
 // Design tokens for the redesigned member surface.
-export const SKY = "#8ED8F0"; // See more / drop tab
+export const SKY = "#75DDF6"; // See more
+export const CYAN = "#39CEF2"; // drop tab + count badge
 export const SKY_DEEP = "#1E9BD0"; // active save zone
 export const SKY_TINT = "#CDEAF7";
-export const BADGE = "#29B6E8";
+export const BADGE = "#39CEF2";
 
 /* ---------------- stepper ---------------- */
 
@@ -109,7 +110,7 @@ export const WideEventCard = memo(function WideEventCard({
 }) {
   return (
     <div className="flex h-full gap-6 p-5">
-      <div className="relative aspect-[4/3] h-full max-h-[260px] shrink-0 overflow-hidden rounded-2xl bg-edge">
+      <div className="relative aspect-square h-full max-h-[300px] shrink-0 overflow-hidden rounded-2xl bg-edge">
         {event.cover_image_url && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -157,7 +158,7 @@ export const WideEventCard = memo(function WideEventCard({
             // Stops a drag that began on the link from being treated as a click.
             draggable={false}
             onPointerDown={(e) => e.stopPropagation()}
-            className="rounded-lg px-4 py-2 font-medium text-ink transition-transform hover:scale-[1.03]"
+            className="rounded-lg px-6 py-2.5 text-lg font-medium text-ink transition-transform hover:scale-[1.03]"
             style={{ background: SKY }}
           >
             See more
@@ -228,8 +229,8 @@ export const SaveZone = memo(
         {/* The tab that the card drops into, tucked behind the box. */}
         <div
           aria-hidden
-          className="absolute -top-10 left-1/2 grid h-[72px] w-[168px] -translate-x-1/2 place-items-end justify-center rounded-b-[5rem] pb-2.5"
-          style={{ background: SKY }}
+          className="absolute -top-[58px] left-1/2 grid h-[80px] w-[204px] -translate-x-1/2 place-items-start justify-center rounded-b-[104px] pt-3.5"
+          style={{ background: CYAN }}
         >
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
             <path
@@ -275,7 +276,7 @@ export const SaveZone = memo(
             type="button"
             onClick={onOpen}
             aria-label={`Open saved events, ${count} saved`}
-            className="absolute -right-3 -top-4 grid h-11 w-11 place-items-center rounded-full font-display text-xl font-bold text-ink transition-transform hover:scale-105"
+            className="absolute -right-4 -top-6 grid h-14 w-14 place-items-center rounded-full font-display text-2xl font-bold text-ink transition-transform hover:scale-105"
             style={{ background: BADGE }}
           >
             {count}

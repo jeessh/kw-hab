@@ -799,7 +799,7 @@ export function EventsView({
       className="relative h-dvh w-full select-none overflow-hidden"
     >
       {/* ambient ground */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff_0%,#EEEBF5_55%,#E6E1F2_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-white" />
 
       {/* head tracking: cursor + one-time calibration overlay */}
       {headEnabled && headSupported && <HeadCursor cursor={cursor} />}
@@ -989,7 +989,7 @@ export function EventsView({
                     opacity: cardOpacity,
                     zIndex: 30,
                   }}
-                  className="pointer-events-auto relative aspect-[2.7/1] w-full max-w-[880px]"
+                  className="pointer-events-auto relative aspect-[2.3/1] w-full max-w-[880px]"
                 >
                 {/* Focused card slides in from the travel direction on next/back.
                     Enter-only (keyed by id) so it won't fight the drag/fly transforms. */}
@@ -1035,7 +1035,7 @@ export function EventsView({
                   onPointerDown={() => startSaveHold(HOLD_TOUCH_MS)}
                   onPointerUp={cancelSaveHold}
                   onPointerCancel={cancelSaveHold}
-                  className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] border border-[#D6D4E0] bg-card shadow-[0_2px_10px_rgba(20,16,40,0.05)] active:cursor-grabbing"
+                  className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] border-[1.5px] border-[#9A9A9A] bg-white active:cursor-grabbing"
                 >
                   <WideEventCard event={current} saved={alreadySaved} />
                   <HoldBadge progress={holdProgress} />
@@ -1412,13 +1412,13 @@ const SideZone = memo(function SideZone({
             e.stopPropagation();
             if (!disabled) onClick();
           }}
-          className="grid h-[104px] w-[104px] place-items-center rounded-full border border-[#CFCDD8] bg-white/60 text-5xl font-light text-ink transition-transform"
+          className="grid h-[124px] w-[152px] place-items-center rounded-full border-[1.5px] border-[#9A9A9A] bg-transparent text-5xl font-light text-[#5C5C5C] transition-transform"
           style={{ transform: active ? "scale(1.08)" : "none" }}
         >
           <span aria-hidden>{isLeft ? "←" : "→"}</span>
         </button>
         <span
-          className="font-display text-2xl font-semibold text-ink"
+          className="font-display text-2xl font-medium text-[#424242]"
           aria-hidden
         >
           {isLeft ? "Back" : "Next"}
