@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AnimatePresence,
   animate,
@@ -1059,6 +1060,21 @@ export function EventsView({
           onSignIn={() => setAuthOpen(true)}
           onSignOut={() => void doLogout()}
         />
+      </div>
+
+      {/* TEMPORARY — a way into the staff console from the feed, for testing.
+          The considered place for this is the sign-in overlay, where it also
+          lives; this one is on the feed itself so the admin flow is one click
+          away without signing in as a member first. Members have no use for it,
+          so it stays small and out of the way — and it should come out before
+          the agencies see this. */}
+      <div className="absolute bottom-3 left-4 z-50">
+        <Link
+          href="/host"
+          className="inline-flex min-h-[32px] items-center text-xs text-muted underline underline-offset-2 transition-colors hover:text-ink"
+        >
+          Staff sign-in
+        </Link>
       </div>
 
       {/* accessibility settings */}
