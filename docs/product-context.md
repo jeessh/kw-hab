@@ -20,6 +20,8 @@ live in `docs/agent-handoff.md`. This file is the **product/requirements** layer
 | 2026-08-13 | **"KW Hab Community Calendar — Source of Truth"** (consolidated reference, last updated 2026-08-04) | Context on the live calendar, the problem statement, the four user groups, disability/device detail, event structure, the four solution requirements, §5 what's built / what's next / decisions / what wasn't solved / accessibility addressed-vs-untested. |
 | 2026-08-13 | **Business goals & success metrics notes** (bulleted, post-call) | Adoption = signups + postings; grant-reporting value of data; member and NPO journeys; NPO approval/onboarding; admin scope; analytics dashboard; success definitions; next steps and owners. |
 
+| 2026-08-14 | **Event Viewing / Admin Event Management PRD** + decision log of 2026-08-09 | Scope by role (members, admin, NPOs). Two things it settles: **metrics are explicitly out of MVP scope**, and NPOs get an **invitation link + onboarding** rather than only superadmin-created accounts. Confirms: separate website, browse without login, save requires a name + icon account, three 45-minute testing sessions with nine testers. |
+
 > Anything below is derived from the above. Where sources conflict, §3 records the
 > conflict rather than silently picking a side.
 
@@ -207,7 +209,7 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
-| M-1 | **Per-event save/signup counts visible to the NPO** | ❌ | No count on `EventOut`, no host-scoped endpoint, no column in the console. `event_attendees` is current state, not a log, and has no `event_id`-leading index. |
+| M-1 | ~~Per-event save/signup counts visible to the NPO~~ | — | **Out of MVP scope** per the 2026-08-14 PRD ("Metrics not in MVP scope"). The data is being collected — saves, click-throughs, postings — so this is a reporting surface whenever it comes back, not a rebuild. Original note: | No count on `EventOut`, no host-scoped endpoint, no column in the console. `event_attendees` is current state, not a log, and has no `event_id`-leading index. |
 | M-2 | Registration click-through tracking | ✅ | Append-only `event_registration_clicks`; `POST /events/{id}/registration-click` is public (anonymous clicks count, `user_id` nullable) and IP-bounded. Recorded before navigating out, and a failure to record never costs the member the link. |
 | M-3 | Admin analytics dashboard | ❌ | No route, no endpoint, no charting dep. |
 | M-4 | Event postings trend | ❌ | `created_at` exists; nothing aggregates it. |
