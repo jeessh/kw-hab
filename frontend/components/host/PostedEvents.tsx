@@ -240,6 +240,7 @@ export const FilterPanel = memo(function FilterPanel({
 
 export const PostedEventCard = memo(function PostedEventCard({
   event,
+  dateCount,
   canEdit,
   canDelete,
   onEdit,
@@ -247,6 +248,8 @@ export const PostedEventCard = memo(function PostedEventCard({
   onDelete,
 }: {
   event: Event;
+  /** Live dates this row stands for — the card is the program, not one date. */
+  dateCount?: number;
   /** Own programs for an admin; anything for a superadmin. */
   canEdit: boolean;
   /** Removal reaches beyond one agency once anyone has saved it. */
@@ -298,10 +301,13 @@ export const PostedEventCard = memo(function PostedEventCard({
               {event.is_virtual && <Pill tone="blue">Virtual</Pill>}
               {event.is_youth && <Pill tone="amber">Youth</Pill>}
               {event.recurrence && (
+                // How it repeats, and how many live dates the row stands for.
+                // The row is the whole program now, so "3/16" — the position of
+                // whichever date happened to be on the card — was answering a
+                // question nobody asked and hiding the one they had.
                 <Pill tone="blue">
-                  {event.series_index && event.series_total
-                    ? `${event.series_index}/${event.series_total}`
-                    : event.recurrence}
+                  {event.recurrence}
+                  {dateCount && dateCount > 1 ? ` · ${dateCount} dates` : ""}
                 </Pill>
               )}
               {event.capacity != null &&
