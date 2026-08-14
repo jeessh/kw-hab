@@ -76,11 +76,28 @@ export type Event = {
   accessibility_tags: string[];
   is_free: boolean;
   capacity?: number | null;
+  /** Human-readable id, e.g. 1042. UUIDs are for machines. */
+  event_no?: number;
+  series_id?: string | null;
+  recurrence?: string | null;
+  series_index?: number | null;
+  series_total?: number | null;
+  pricing_model?:
+    | "free"
+    | "donation"
+    | "per_session"
+    | "per_group"
+    | "series"
+    | "custom";
+  price_cents?: number | null;
+  price_group_size?: number | null;
+  price_sessions?: number | null;
+  price_note?: string | null;
+  /** Built server-side from the structured fields, so every surface agrees. */
+  price_label?: string;
   saved_count?: number;
   min_age?: number | null;
   max_age?: number | null;
-  latitude?: number | null;
-  longitude?: number | null;
   /** Virtual or in person; youth or everyone. Both filter the admin list. */
   is_virtual?: boolean;
   is_youth?: boolean;

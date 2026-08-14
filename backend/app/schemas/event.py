@@ -3,7 +3,17 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from app.core.pricing import PricingError
+from app.core.pricing import validate as _validate_pricing
 from app.models.event import EXTERNAL, INTERNAL
+
+
+def validate_pricing(model, cents, group, sessions, note) -> None:
+    """Same rule for create and for the merged result of a patch."""
+    try:
+        _validate_pricing(model or "free", cents, group, sessions, note)
+    except PricingError as exc:
+        raise ValueError(str(exc)) from exc
 
 _MODES = {INTERNAL, EXTERNAL}
 
@@ -48,14 +58,17 @@ class EventBase(BaseModel):
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
     capacity: int | None = None
     min_age: int | None = None
     max_age: int | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     accessibility_tags: list[str] = []
+    pricing_model: str = "free"
+    price_cents: int | None = None
+    price_group_size: int | None = None
+    price_sessions: int | None = None
+    price_note: str | None = None
     is_free: bool = True
     is_virtual: bool = False
     is_youth: bool = False
@@ -67,11 +80,23 @@ class EventBase(BaseModel):
 
 class EventCreate(EventBase):
     gallery: list[EventImageIn] = []
+    # once | weekly | biweekly | monthly | annual. Anything but "once" creates
+    # a dated row per occurrence, all sharing one series_id.
+    frequency: str = "once"
+    occurrence_count: int | None = None
+    repeat_until: datetime | None = None
 
     @model_validator(mode="after")
     def _check_registration(self):
         validate_registration(
             self.registration_mode, self.requires_signup, self.registration_url
+        )
+        validate_pricing(
+            self.pricing_model,
+            self.price_cents,
+            self.price_group_size,
+            self.price_sessions,
+            self.price_note,
         )
         return self
 
@@ -83,14 +108,17 @@ class EventUpdate(BaseModel):
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
     capacity: int | None = None
     min_age: int | None = None
     max_age: int | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     accessibility_tags: list[str] | None = None
+    pricing_model: str | None = None
+    price_cents: int | None = None
+    price_group_size: int | None = None
+    price_sessions: int | None = None
+    price_note: str | None = None
     is_free: bool | None = None
     is_virtual: bool | None = None
     is_youth: bool | None = None
@@ -107,6 +135,13 @@ class EventOut(EventBase):
     host_id: uuid.UUID
     host_name: str = ""
     host_logo_url: str | None = None
+    event_no: int = 0
+    series_id: uuid.UUID | None = None
+    recurrence: str | None = None
+    series_index: int | None = None
+    series_total: int | None = None
+    # Built from the structured fields so every surface says it the same way.
+    price_label: str = ""
     # How many have saved it, so the card can say "full" without a second call.
     saved_count: int = 0
     images: list[EventImageOut] = []

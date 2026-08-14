@@ -10,10 +10,13 @@ from app.models.attendance import Attendance
 from app.models.event import Event
 from app.models.event_image import EventImage
 from app.models.host import Host
+from app.core.recurrence import RecurrenceError, describe as describe_recurrence
+from app.core.recurrence import occurrences
 from app.schemas.event import (
     EventCreate,
     EventOut,
     EventUpdate,
+    validate_pricing,
     validate_registration,
 )
 
@@ -88,6 +91,8 @@ _REQUIRED_FIELDS = frozenset(
         "is_free",
         "requires_signup",
         "registration_mode",
+        "pricing_model",
+        "event_no",
     }
 )
 
@@ -159,14 +164,70 @@ def create_event(
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
-    data = body.model_dump(exclude={"gallery"})
-    event = Event(host_id=host.id, **data)
-    for img in body.gallery:
-        event.images.append(EventImage(**img.model_dump()))
-    db.add(event)
+    """Create the program — or, if it repeats, every dated occurrence of it.
+
+    Occurrences are real rows sharing a series_id rather than a rule expanded on
+    read, because capacity, saves and reminders all attach to a specific date.
+    The first occurrence is returned, since that's the one the console lands on.
+    """
+    data = body.model_dump(
+        exclude={"gallery", "frequency", "occurrence_count", "repeat_until"}
+    )
+    starts_at = data.get("starts_at")
+
+    if body.frequency and body.frequency != "once":
+        if not starts_at:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "A repeating program needs a first date.",
+            )
+        try:
+            dates = occurrences(
+                starts_at,
+                body.frequency,
+                count=body.occurrence_count,
+                until=body.repeat_until,
+            )
+        except RecurrenceError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    else:
+        dates = [starts_at]
+
+    # A one-off is its own series of one, so nothing downstream has to ask
+    # whether a program is "really" a series.
+    series_id = uuid.uuid4()
+    label = describe_recurrence(body.frequency, starts_at) if starts_at else None
+    # How long each occurrence runs, preserved across the whole series.
+    span = (
+        data["ends_at"] - starts_at
+        if data.get("ends_at") and starts_at
+        else None
+    )
+
+    created: list[Event] = []
+    for index, when in enumerate(dates, start=1):
+        row = Event(
+            **{
+                **data,
+                "starts_at": when,
+                "ends_at": when + span if span and when else data.get("ends_at"),
+            },
+            host_id=host.id,
+            series_id=series_id,
+            recurrence=label,
+            series_index=index,
+            series_total=len(dates),
+        )
+        # Gallery images belong to the occurrence people actually open.
+        if index == 1:
+            for img in body.gallery:
+                row.images.append(EventImage(**img.model_dump()))
+        db.add(row)
+        created.append(row)
+
     db.commit()
-    db.refresh(event)
-    return event
+    db.refresh(created[0])
+    return created[0]
 
 
 @router.patch("/{event_id}", response_model=EventOut)
@@ -198,6 +259,13 @@ def update_event(
     try:
         validate_registration(
             event.registration_mode, event.requires_signup, event.registration_url
+        )
+        validate_pricing(
+            event.pricing_model,
+            event.price_cents,
+            event.price_group_size,
+            event.price_sessions,
+            event.price_note,
         )
     except ValueError as exc:
         db.rollback()

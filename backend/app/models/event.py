@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
@@ -48,13 +48,34 @@ class Event(Base):
         Text, nullable=True, index=True
     )
     location: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Coordinates for proximity sorting. Null means the address was never
-    # geocoded, and such a program simply doesn't take part in a distance sort
-    # rather than being hidden by one.
-    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
-    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Null = no limit, which is not the same as zero.
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # An identifier a person can say out loud. UUIDs are for machines; this is
+    # what a member reads down the phone and what a log entry references.
+    event_no: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=text("nextval('events_event_no_seq')"),
+        unique=True,
+    )
+    # Every occurrence of a repeating program shares this. A one-off is its own
+    # series of one, so nothing has to special-case "not a series".
+    series_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    # Kept as the agency wrote it — "Weekly (Fridays)", "Monthly (last Sat)".
+    recurrence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    series_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    series_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # free | donation | per_session | per_group | series | custom
+    pricing_model: Mapped[str] = mapped_column(
+        Text, nullable=False, default="free", server_default=text("'free'")
+    )
+    # Cents, so no float ever touches money.
+    price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_group_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Open-ended on either side: min 55 with no max reads as "55 and up".
     min_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -110,6 +131,7 @@ class Event(Base):
     # mismatch here makes every future revision propose spurious index churn.
     __table_args__ = (
         Index("ix_events_host", "host_id"),
+        Index("ix_events_series", "series_id"),
         Index(
             "ix_events_live",
             "starts_at",
@@ -123,6 +145,19 @@ class Event(Base):
     def host_name(self) -> str:
         """Owning organization's display name, surfaced on EventOut for dashboards."""
         return self.host.name if self.host else ""
+
+    @property
+    def price_label(self) -> str:
+        """What the cost line says, built from the structured fields."""
+        from app.core.pricing import describe
+
+        return describe(
+            self.pricing_model,
+            self.price_cents,
+            self.price_group_size,
+            self.price_sessions,
+            self.price_note,
+        )
 
     @property
     def saved_count(self) -> int:

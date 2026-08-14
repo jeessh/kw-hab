@@ -212,6 +212,10 @@ function PostedEventsPage({ session }: { session: Session }) {
                   event={ev}
                   // Editing stays with whoever owns the program; removal is a
                   // KW Hab decision once anyone has saved it.
+                  // Admins manage their own programming; superadmins manage
+                  // anyone's. The API enforces both — this keeps the console
+                  // from offering buttons that would be refused.
+                  canEdit={isSuper || ev.host_id === session.id}
                   canDelete={isSuper || ev.host_id === session.id}
                   onEdit={setEditing}
                   onShare={share}

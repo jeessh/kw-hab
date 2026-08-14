@@ -240,13 +240,16 @@ export const FilterPanel = memo(function FilterPanel({
 
 export const PostedEventCard = memo(function PostedEventCard({
   event,
+  canEdit,
   canDelete,
   onEdit,
   onShare,
   onDelete,
 }: {
   event: Event;
-  /** Removal reaches beyond one agency, so only superadmins see it. */
+  /** Own programs for an admin; anything for a superadmin. */
+  canEdit: boolean;
+  /** Removal reaches beyond one agency once anyone has saved it. */
   canDelete: boolean;
   onEdit: (event: Event) => void;
   onShare: (event: Event) => void;
@@ -259,9 +262,12 @@ export const PostedEventCard = memo(function PostedEventCard({
     >
       <div className="flex gap-5">
         <button
-          onClick={() => onEdit(event)}
-          aria-label={`Edit ${event.title}`}
-          className="h-[150px] w-[150px] shrink-0 overflow-hidden rounded-xl bg-[#BDBDBD]"
+          onClick={() => canEdit && onEdit(event)}
+          aria-label={canEdit ? `Edit ${event.title}` : event.title}
+          aria-disabled={!canEdit || undefined}
+          className={`h-[150px] w-[150px] shrink-0 overflow-hidden rounded-xl bg-[#BDBDBD] ${
+            canEdit ? "" : "cursor-default"
+          }`}
         >
           {event.cover_image_url && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -278,6 +284,11 @@ export const PostedEventCard = memo(function PostedEventCard({
             <p className="inline-flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-muted">
               <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-[#22C55E]" />
               Posted by {event.host_name}
+              {event.event_no ? (
+                <span className="normal-case tracking-normal">
+                  · #{event.event_no}
+                </span>
+              ) : null}
             </p>
             <div className="flex gap-2">
               <Pill tone="green">{event.is_free ? "Free" : "Paid"}</Pill>
@@ -286,6 +297,13 @@ export const PostedEventCard = memo(function PostedEventCard({
               </Pill>
               {event.is_virtual && <Pill tone="blue">Virtual</Pill>}
               {event.is_youth && <Pill tone="amber">Youth</Pill>}
+              {event.recurrence && (
+                <Pill tone="blue">
+                  {event.series_index && event.series_total
+                    ? `${event.series_index}/${event.series_total}`
+                    : event.recurrence}
+                </Pill>
+              )}
               {event.capacity != null &&
                 ((event.saved_count ?? 0) >= event.capacity ? (
                   <Pill tone="pink">Full</Pill>
@@ -297,12 +315,18 @@ export const PostedEventCard = memo(function PostedEventCard({
             </div>
           </div>
 
-          <button
-            onClick={() => onEdit(event)}
-            className="mt-1 block text-left font-display text-2xl font-bold text-ink hover:underline"
-          >
-            {event.title}
-          </button>
+          {canEdit ? (
+            <button
+              onClick={() => onEdit(event)}
+              className="mt-1 block text-left font-display text-2xl font-bold text-ink hover:underline"
+            >
+              {event.title}
+            </button>
+          ) : (
+            <h3 className="mt-1 font-display text-2xl font-bold text-ink">
+              {event.title}
+            </h3>
+          )}
 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-base text-ink">
             {event.starts_at && (
@@ -356,6 +380,11 @@ export const PostedEventCard = memo(function PostedEventCard({
         <IconButton label={`Share ${event.title}`} onClick={() => onShare(event)}>
           <SendIcon />
         </IconButton>
+        {canEdit && (
+          <IconButton label={`Edit ${event.title}`} onClick={() => onEdit(event)}>
+            <PencilIcon />
+          </IconButton>
+        )}
         {canDelete && (
           <button
             onClick={() => onDelete(event)}
@@ -451,6 +480,14 @@ function SendIcon() {
     </svg>
   );
 }
+function PencilIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4z" />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

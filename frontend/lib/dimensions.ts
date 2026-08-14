@@ -16,7 +16,7 @@ export type DimensionKey =
   | "eventType"
   | "activityType"
   | "age"
-  | "distance"
+  | "cost"
   | "all";
 
 export type Dimension = {
@@ -140,17 +140,16 @@ export const DIMENSIONS: Dimension[] = [
     },
   },
   {
-    key: "distance",
-    label: "Distance",
-    heading: "Distance",
-    emoji: "📍",
-    // Needs both a member location and coordinates on the program, so until
-    // addresses are geocoded everything lands in one honest bucket rather than
-    // a made-up ordering.
-    bucket: (e) =>
-      e.latitude != null && e.longitude != null
-        ? { id: "mapped", label: "On the map", color: "#2FA36B" }
-        : { id: "unmapped", label: "Address not mapped yet", color: "#8A8AA0" },
+    key: "cost",
+    label: "Cost",
+    heading: "Cost",
+    emoji: "🎟️",
+    bucket: (e) => {
+      if (e.pricing_model === "donation")
+        return { id: "donation", label: "Donations welcome", color: "#2FA36B" };
+      if (e.is_free) return { id: "free", label: "Free", color: "#22C55E" };
+      return { id: "paid", label: e.price_label || "Paid", color: "#F59E0B" };
+    },
   },
   {
     key: "all",
@@ -181,19 +180,4 @@ export function bucketsFor(events: Event[], dimension: Dimension): Bucket[] {
     if (!seen.has(b.id)) seen.set(b.id, { ...b, index });
   });
   return [...seen.values()];
-}
-
-/** Kilometres between two points. Enough for a city; no PostGIS required. */
-export function distanceKm(
-  a: { lat: number; lon: number },
-  b: { lat: number; lon: number },
-): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
 }
