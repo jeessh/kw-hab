@@ -103,6 +103,16 @@ export function EventsView({
   const [events, setEvents] = useState<Event[]>([]);
   const [i, setI] = useState(0);
   const [saved, setSaved] = useState<Set<string>>(new Set());
+  // How many programs are saved, which is not how many rows are saved.
+  //
+  // `saved` holds every occurrence id, because that is what answers "is this
+  // card saved?" for whichever date is on screen. Counting it told a member who
+  // pressed Save once on an eight-week league that they had eight saved things.
+  // Tracked as its own set rather than derived from `events`, which loads on a
+  // separate promise — deriving it flashed the row count until the feed
+  // arrived. A one-off is its own program, keyed by id.
+  const [savedPrograms, setSavedPrograms] = useState<Set<string>>(new Set());
+  const programKey = (ev: Event) => ev.series_id ?? ev.id;
   const [status, setStatus] = useState<"loading" | "ready" | "empty">(
     "loading",
   );
@@ -212,6 +222,11 @@ export function EventsView({
         setSaved((prevSaved) => {
           const merged = new Set(prevSaved);
           attended.forEach((ev) => merged.add(ev.id));
+          return merged;
+        });
+        setSavedPrograms((prev) => {
+          const merged = new Set(prev);
+          attended.forEach((ev) => merged.add(programKey(ev)));
           return merged;
         });
       })
@@ -352,11 +367,38 @@ export function EventsView({
         attended.forEach((ev) => merged.add(ev.id));
         return merged;
       });
+      setSavedPrograms((prev) => {
+        const merged = new Set(prev);
+        attended.forEach((ev) => merged.add(programKey(ev)));
+        return merged;
+      });
     } catch {
       /* the cookie is set; the next read will pick the profile up */
     }
     if (pending) setRegisterFor(pending);
   }, [authFor]);
+
+  /**
+   * Re-read what is actually saved, after a save or an un-save has landed.
+   *
+   * Saving a series-priced program enrols the member across the run, and
+   * un-saving releases the run — but bounded by what the price covered and by
+   * the date they joined, which is a rule the server owns and the client cannot
+   * reproduce from an Event. Optimistically we touch the one id we know about,
+   * so the press feels instant; this then reconciles with the truth. Without it
+   * an eight-week league un-saved from one card left the other seven dates
+   * still showing a filled bookmark until a reload.
+   */
+  const syncSaved = useCallback(async () => {
+    if (!signedInRef.current) return;
+    try {
+      const attended = await api<Event[]>("/users/me/events");
+      setSaved(new Set(attended.map((ev) => ev.id)));
+      setSavedPrograms(new Set(attended.map(programKey)));
+    } catch {
+      /* leave the optimistic state; the next reload settles it */
+    }
+  }, []);
 
   const attend = useCallback(
     async (ev: Event) => {
@@ -367,8 +409,10 @@ export function EventsView({
       }
       setSrMessage(`Saved ${ev.title}`);
       setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
+      setSavedPrograms((prev) => new Set(prev).add(programKey(ev)));
       try {
         await api(`/events/${ev.id}/attend`, { method: "POST" });
+        void syncSaved();
       } catch (e) {
         // Roll the badge back on any failure, including an expired session.
         // Leaving it would tell someone a program is saved when the server has
@@ -379,6 +423,11 @@ export function EventsView({
           next.delete(ev.id);
           return next;
         });
+        setSavedPrograms((prev) => {
+          const next = new Set(prev);
+          next.delete(programKey(ev));
+          return next;
+        });
         // Signed in a moment ago, not any more: the cookie expired mid-request.
         if (e instanceof ApiError && e.status === 401) {
           toSignIn(ev);
@@ -387,7 +436,7 @@ export function EventsView({
         setSrMessage(`Could not save ${ev.title}. Please try again.`);
       }
     },
-    [toSignIn],
+    [toSignIn, syncSaved],
   );
 
   const unsave = useCallback(async (ev: Event) => {
@@ -396,15 +445,22 @@ export function EventsView({
       next.delete(ev.id);
       return next;
     });
+    setSavedPrograms((prev) => {
+      const next = new Set(prev);
+      next.delete(programKey(ev));
+      return next;
+    });
     setSrMessage(`Removed ${ev.title}`);
     try {
       await api(`/events/${ev.id}/attend`, { method: "DELETE" });
+      void syncSaved();
     } catch {
       // Put it back rather than show it gone when it isn't.
       setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
+      setSavedPrograms((prev) => new Set(prev).add(programKey(ev)));
       setSrMessage(`Could not remove ${ev.title}.`);
     }
-  }, []);
+  }, [syncSaved]);
 
   const toggleSave = useCallback(
     (ev: Event) => {
@@ -746,6 +802,7 @@ export function EventsView({
     // everywhere except the part they were looking at.
     setMe(null);
     setSaved(new Set());
+    setSavedPrograms(new Set());
     setDetailFor(null);
     setRegisterFor(null);
     closeSettings();
@@ -1062,7 +1119,7 @@ export function EventsView({
                 <div className="flex flex-col items-end gap-4">
                   <SearchBox value={query} onChange={setQuery} />
                   <SavedEventsButton
-                    count={saved.size}
+                    count={savedPrograms.size}
                     onClick={openSettings}
                   />
                 </div>
@@ -1226,7 +1283,7 @@ export function EventsView({
           <SaveZone
             ref={dropRef}
             active={saveReveal > 0 || dropPulse}
-            count={saved.size}
+            count={savedPrograms.size}
             onSave={saveFromButton}
             onOpen={openSettings}
           />
