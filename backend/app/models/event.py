@@ -49,6 +49,15 @@ class Event(Base):
         ARRAY(Text), default=list  # text[] to match the DB; see user.icons note
     )
     is_free: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Virtual or in person, and youth or everyone. Both are either/or questions
+    # a member needs answered before deciding, so they're columns rather than
+    # entries in the free-form accessibility tag array.
+    is_virtual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_youth: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     # True = the member must register; False = drop-in, just save it. Where that
     # registration happens is registration_mode's job.
     requires_signup: Mapped[bool] = mapped_column(Boolean, default=False)

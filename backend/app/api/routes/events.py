@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_host, get_db
 from app.core.storage import StorageError, upload_image
+from app.models.attendance import Attendance
 from app.models.event import Event
 from app.models.event_image import EventImage
 from app.models.host import Host
@@ -207,14 +208,61 @@ def delete_event(
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
-    """Archive the program. It leaves every member-facing surface immediately,
-    but the row and its attendance history stay — those counts are what the
-    organizer reports to funders, and a program members already attended is not
-    something a later mistake should be able to erase."""
+    """Archive the program. Superadmins only.
+
+    It leaves every member-facing surface immediately, but the row and its
+    attendance history stay — those counts are what the organizer reports to
+    funders, and a program members already attended is not something a later
+    mistake should be able to erase.
+
+    Removing a program is the one action here that reaches beyond the
+    organization that posted it: members have it saved, and its attendance is
+    somebody's grant evidence. An agency that needs one gone asks KW Hab, the
+    same as they do today. Editing stays with whoever owns the program.
+    """
     event = db.get(Event, event_id)
     if not event or event.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
-    if not _owns_or_admin(host, event):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+    # Superadmins always. An owner may take down a program only while nobody
+    # has saved it — the moment somebody has, removing it reaches past the
+    # agency that posted it, and it's also somebody's grant evidence. That's
+    # what makes "undo" work on a program posted seconds ago while still
+    # keeping removal a KW Hab decision once it matters.
+    if not host.is_admin:
+        if event.host_id != host.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+        saved_by = (
+            db.query(func.count(Attendance.user_id))
+            .filter(Attendance.event_id == event.id)
+            .scalar()
+            or 0
+        )
+        if saved_by:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "People have saved this program — ask KW Hab to remove it.",
+            )
     event.deleted_at = func.now()
     db.commit()
+
+
+@router.post("/{event_id}/restore", response_model=EventOut)
+def restore_event(
+    event_id: uuid.UUID,
+    host: Host = Depends(get_current_host),
+    db: Session = Depends(get_db),
+):
+    """Put an archived program back. This is what Undo calls.
+
+    Same rule as archiving: superadmins always, and an owner while nobody has
+    saved it. Nothing was destroyed, so this only has to clear the flag.
+    """
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
+    if not host.is_admin and event.host_id != host.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+    event.deleted_at = None
+    db.commit()
+    db.refresh(event)
+    return event

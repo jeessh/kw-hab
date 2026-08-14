@@ -52,6 +52,8 @@ class EventBase(BaseModel):
     ends_at: datetime | None = None
     accessibility_tags: list[str] = []
     is_free: bool = True
+    is_virtual: bool = False
+    is_youth: bool = False
     requires_signup: bool = False
     registration_mode: str = INTERNAL
     registration_url: str | None = None
@@ -80,6 +82,8 @@ class EventUpdate(BaseModel):
     ends_at: datetime | None = None
     accessibility_tags: list[str] | None = None
     is_free: bool | None = None
+    is_virtual: bool | None = None
+    is_youth: bool | None = None
     requires_signup: bool | None = None
     registration_mode: str | None = None
     registration_url: str | None = None

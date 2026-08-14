@@ -75,6 +75,9 @@ export type Event = {
   ends_at?: string | null;
   accessibility_tags: string[];
   is_free: boolean;
+  /** Virtual or in person; youth or everyone. Both filter the admin list. */
+  is_virtual?: boolean;
+  is_youth?: boolean;
   requires_signup: boolean;
   /**
    * Where registering happens. Only meaningful when `requires_signup` — a
