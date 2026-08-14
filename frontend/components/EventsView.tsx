@@ -72,7 +72,6 @@ const HOLD_KEY_MS = 1000; // keyboard hold (ArrowUp / ArrowDown)
 const NAV_HOVER_MS = 1500; // hover-dwell on a side zone to move
 const NAV_PRESS_MS = 500; // press-and-hold a side zone to move (also covers touch)
 const NAV_PEEK = 96; // px the whole carousel slides while a side dwell builds
-const BERRY = "#E8318A"; // card header + primary accent
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 // Card date format, e.g. "July 13, 2026".
@@ -177,7 +176,6 @@ export function EventsView({
 
   // Which side zone is currently dwelling + how far along (0→1), for its UI.
   const [peekSide, setPeekSide] = useState<"left" | "right" | null>(null);
-  const [navProgress, setNavProgress] = useState(0);
 
   const holdSave = useHold();
   const holdSettings = useHold();
@@ -672,11 +670,9 @@ export function EventsView({
         ms,
         (p) => {
           peekX.set(sign * p * NAV_PEEK);
-          setNavProgress(p);
         },
         () => {
           peekX.set(0);
-          setNavProgress(0);
           // Bail if state flipped mid-dwell (Settings opened / card flying).
           if (navBlocked()) {
             peekSideRef.current = null;
@@ -724,7 +720,6 @@ export function EventsView({
     peekSideRef.current = null;
     holdNav.cancel();
     setPeekSide(null);
-    setNavProgress(0);
     void animate(peekX, 0, { type: "spring", stiffness: 300, damping: 30 });
   }, [holdNav, peekX]);
 
@@ -1182,7 +1177,6 @@ export function EventsView({
             <div className="relative flex w-full flex-1 items-center justify-center">
               <SideZone
                 side="left"
-                progress={peekSide === "left" ? navProgress : 0}
                 active={peekSide === "left"}
                 disabled={flying}
                 onEnter={hoverNavLeft}
@@ -1193,7 +1187,6 @@ export function EventsView({
               />
               <SideZone
                 side="right"
-                progress={peekSide === "right" ? navProgress : 0}
                 active={peekSide === "right"}
                 disabled={flying}
                 onEnter={hoverNavRight}
@@ -1658,7 +1651,6 @@ function ConfirmSweep() {
 // navigate; the rest of the zone stays decorative.
 const SideZone = memo(function SideZone({
   side,
-  progress,
   active,
   disabled,
   onEnter,
@@ -1668,7 +1660,6 @@ const SideZone = memo(function SideZone({
   onClick,
 }: {
   side: "left" | "right";
-  progress: number;
   active: boolean;
   disabled: boolean;
   onEnter: () => void;
@@ -1736,12 +1727,6 @@ const SideZone = memo(function SideZone({
         >
           {isLeft ? "Back" : "Next"}
         </span>
-        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-edge/70" aria-hidden>
-          <div
-            className="h-full rounded-full transition-[width] duration-75"
-            style={{ width: `${Math.round(progress * 100)}%`, background: BERRY }}
-          />
-        </div>
       </div>
     </div>
   );
