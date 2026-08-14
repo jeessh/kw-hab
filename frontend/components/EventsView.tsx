@@ -41,6 +41,7 @@ import { personalizedFeed } from "@/lib/feed";
 import {
   bucketsFor,
   dimensionByKey,
+  groupByBucket,
   type DimensionKey,
 } from "@/lib/dimensions";
 import {
@@ -230,7 +231,7 @@ export function EventsView({
   // text-to-speech — which has no bearing on order.
   const interests = me?.interest_categories;
   const accessPrefs = me?.accessibility_prefs;
-  const feed = useMemo(() => {
+  const scoredFeed = useMemo(() => {
     // A program that already happened is not a thing anyone can attend, and
     // the design's "Today / Tomorrow" headings assume it's gone. Undated
     // programs stay — "date to be announced" is still upcoming.
@@ -244,6 +245,22 @@ export function EventsView({
       accessPrefs: accessPrefs ?? [],
     });
   }, [events, interests, accessPrefs]);
+
+  // What "See events by" is grouping on. Declared before the feed because the
+  // one-at-a-time order depends on it.
+  const dimension = useMemo(
+    () => dimensionByKey(dimensionKey),
+    [dimensionKey],
+  );
+
+  // The order Next and Back walk: each stepper bucket's programs together, in
+  // the order the stepper shows them. The grid keeps `scoredFeed` — it lays
+  // programs out under day headings, so it has its own reading order and a
+  // route through the buckets would only scramble the days.
+  const feed = useMemo(
+    () => groupByBucket(scoredFeed, dimension),
+    [scoredFeed, dimension],
+  );
 
   // A filter change can shorten the feed out from under the cursor.
   useEffect(() => {
@@ -273,10 +290,8 @@ export function EventsView({
   // Non-wrapping window: the five cards always read left→right in order.
 
   // Buckets of the chosen dimension, in the order they appear in the feed.
-  const dimension = useMemo(
-    () => dimensionByKey(dimensionKey),
-    [dimensionKey],
-  );
+  // Read off the grouped feed, so each bucket's index is the start of a
+  // contiguous run and jumping to a dot lands on that run's first program.
   const buckets = useMemo(
     () => bucketsFor(feed, dimension),
     [feed, dimension],
@@ -1057,7 +1072,7 @@ export function EventsView({
 
             {viewMode === "grid" ? (
               <GridFeed
-                events={feed}
+                events={scoredFeed}
                 saved={saved}
                 query={query}
                 onOpen={setDetailFor}

@@ -181,3 +181,30 @@ export function bucketsFor(events: Event[], dimension: Dimension): Bucket[] {
   });
   return [...seen.values()];
 }
+
+/**
+ * The feed reordered so each bucket's programs sit together, in the order the
+ * stepper lays them out.
+ *
+ * The stepper draws a route across the top of the one-at-a-time view, so Next
+ * has to walk it: finish this organization, then move to the next dot. Ordered
+ * by date alone the buckets interleave, and stepping forward threw the active
+ * dot back and forth across the rail — a progress indicator that doesn't
+ * progress.
+ *
+ * Bucket order is still first appearance in the incoming order, so the
+ * best-matching bucket leads, and inside a bucket the programs keep their
+ * personalized-then-chronological order. Grouping reorders; like every other
+ * ordering rule here it hides nothing.
+ */
+export function groupByBucket(events: Event[], dimension: Dimension): Event[] {
+  const rank = new Map<string, number>();
+  return events
+    .map((event, index) => {
+      const { id } = dimension.bucket(event);
+      if (!rank.has(id)) rank.set(id, rank.size);
+      return { event, index, rank: rank.get(id) as number };
+    })
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.event);
+}
