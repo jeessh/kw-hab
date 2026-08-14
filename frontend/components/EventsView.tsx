@@ -36,11 +36,7 @@ import { HeadCursor } from "@/components/HeadCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { SavedEvents } from "@/components/SavedEvents";
-import {
-  CATEGORIES,
-  FALLBACK_CATEGORY,
-  categoryStyle,
-} from "@/lib/categories";
+import { CATEGORIES } from "@/lib/categories";
 import { personalizedFeed } from "@/lib/feed";
 import {
   bucketsFor,
@@ -53,6 +49,8 @@ import {
   ViewToggle,
   type ViewMode,
 } from "@/components/member/MemberChrome";
+import { LoginOverlay } from "@/components/member/LoginOverlay";
+import { RegisterPrompt } from "@/components/member/RegisterPrompt";
 import {
   BucketStepper,
   GridView,
@@ -68,11 +66,6 @@ const NAV_HOVER_MS = 1500; // hover-dwell on a side zone to move
 const NAV_PRESS_MS = 500; // press-and-hold a side zone to move (also covers touch)
 const NAV_PEEK = 96; // px the whole carousel slides while a side dwell builds
 const BERRY = "#E8318A"; // card header + primary accent
-// Topic icon + colour comes from the shared taxonomy in lib/categories, so the
-// stepper, the card header, the signup chips, and the host-side picker can't
-// drift apart.
-const tagStyle = categoryStyle;
-
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 // Card date format, e.g. "July 13, 2026".
@@ -136,6 +129,13 @@ export function EventsView({
   // How the feed is grouped for the stepper — the "See events by" choice.
   const [dimensionKey, setDimensionKey] = useState<DimensionKey>("org");
   const [dimOpen, setDimOpen] = useState(false);
+  // The program someone was looking at when they were asked to sign in, and
+  // the one to offer registration for once they have.
+  const [authFor, setAuthFor] = useState<Event | null>(null);
+  const [registerFor, setRegisterFor] = useState<Event | null>(null);
+  // Open with no pending program — someone signing in of their own accord
+  // rather than because they tried to save something.
+  const [authOpen, setAuthOpen] = useState(false);
 
   const [saveReveal, setSaveReveal] = useState(0);
   const [settingsReveal, setSettingsReveal] = useState(0);
@@ -286,15 +286,26 @@ export function EventsView({
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;
 
-  const toSignIn = useCallback(
-    (ev: Event) => {
-      // Carry the program, so signing in returns to it and finishes the save
-      // rather than dropping someone back on the feed to find it again.
-      const next = encodeURIComponent(`/events/${ev.id}?save=1`);
-      router.push(`/signup?next=${next}`);
-    },
-    [router],
-  );
+  // Sign in over the feed rather than navigating away: the program stays on
+  // screen behind the overlay, so there is nothing to find again afterwards.
+  const toSignIn = useCallback((ev: Event) => {
+    setAuthFor(ev);
+    setAuthOpen(true);
+  }, []);
+
+  // Re-read the profile so the feed, the saved list and the chrome all agree
+  // that somebody is here now.
+  const handleSignedIn = useCallback(async () => {
+    setAuthOpen(false);
+    const pending = authFor;
+    setAuthFor(null);
+    try {
+      setMe(await api<Me>("/users/me"));
+    } catch {
+      /* the cookie is set; the next read will pick the profile up */
+    }
+    if (pending) setRegisterFor(pending);
+  }, [authFor]);
 
   const attend = useCallback(
     async (ev: Event) => {
@@ -852,7 +863,7 @@ export function EventsView({
       <div className="absolute right-4 top-4 z-50">
         <AccountChip
           name={me ? `${me.first_name} ${me.last_name.charAt(0)}.` : null}
-          onClick={() => (signedIn ? void doLogout() : router.push("/signup"))}
+          onClick={() => (signedIn ? void doLogout() : setAuthOpen(true))}
         />
       </div>
 
@@ -873,7 +884,10 @@ export function EventsView({
         interests={me?.interest_categories ?? []}
         onToggleInterest={toggleInterest}
         signedIn={signedIn}
-        onSignIn={() => router.push("/signup")}
+        onSignIn={() => {
+          setAuthFor(null);
+          setAuthOpen(true);
+        }}
       />
 
       {/* Saved Events panel (opens via the settings gesture) */}
@@ -881,7 +895,10 @@ export function EventsView({
         me={me}
         reveal={settingsReveal}
         onClose={closeSettings}
-        onSignIn={() => router.push("/signup")}
+        onSignIn={() => {
+          setAuthFor(null);
+          setAuthOpen(true);
+        }}
       />
 
       {/* ---------------- EVENTS ---------------- */}
@@ -1045,6 +1062,29 @@ export function EventsView({
           />
         )}
       </div>
+
+      {authOpen && (
+        <LoginOverlay
+          onClose={() => {
+            setAuthOpen(false);
+            setAuthFor(null);
+          }}
+          onSignedIn={() => void handleSignedIn()}
+          onSignUp={() => router.push("/signup")}
+        />
+      )}
+
+      {registerFor && (
+        <RegisterPrompt
+          title={registerFor.title}
+          onSkip={() => setRegisterFor(null)}
+          onRegister={() => {
+            const ev = registerFor;
+            setRegisterFor(null);
+            void attend(ev);
+          }}
+        />
+      )}
     </motion.main>
   );
 }

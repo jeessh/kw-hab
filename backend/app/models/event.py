@@ -29,7 +29,12 @@ class Event(Base):
     # the topic (Cooking), activity_type is the shape (a class, a drop-in
     # social, an outing). Picked from lib/activities.ts, same as category —
     # a hand-typed value can never match a member's choice.
-    activity_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # index=True yields ix_events_activity_type, exactly what migration 0006
+    # creates — leaving it off means metadata doesn't know the index exists and
+    # the next autogenerate proposes dropping it.
+    activity_type: Mapped[str | None] = mapped_column(
+        Text, nullable=True, index=True
+    )
     location: Mapped[str | None] = mapped_column(String, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

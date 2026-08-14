@@ -26,11 +26,5 @@ export const ACTIVITY_TYPES: ActivityType[] = [
   { label: "Performance", emoji: "🎭" },
 ];
 
-const BY_KEY = new Map(ACTIVITY_TYPES.map((a) => [a.label.toLowerCase(), a]));
-
+/** Shown for a program whose host didn't pick a kind. */
 export const FALLBACK_ACTIVITY = "Other";
-
-export function activityStyle(label?: string | null): ActivityType {
-  const found = BY_KEY.get((label ?? "").trim().toLowerCase());
-  return found ?? { label: label || FALLBACK_ACTIVITY, emoji: "🎟️" };
-}

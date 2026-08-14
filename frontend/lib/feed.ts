@@ -8,18 +8,6 @@ import { sameCategory } from "@/lib/categories";
 const TOPIC_WEIGHT = 3;
 const ACCESS_WEIGHT = 1;
 
-export type FeedFilters = {
-  /** "all" keeps both; the member opts into one side explicitly. */
-  cost: "all" | "free" | "paid";
-  /** Host name, or "all". Matched exactly against Event.host_name. */
-  org: string;
-};
-
-export const NO_FILTERS: FeedFilters = { cost: "all", org: "all" };
-
-export const filtersActive = (f: FeedFilters) =>
-  f.cost !== "all" || f.org !== "all";
-
 /**
  * The two profile fields that affect ordering. Taken as plain arrays rather
  * than the whole `Me` so callers can memoize on exactly what matters — patching
@@ -55,27 +43,9 @@ export function matchScore(event: Event, taste: Taste): number {
  * ties here fall back to that original index so the feed never reshuffles
  * between renders.
  */
-export function personalizedFeed(
-  events: Event[],
-  taste: Taste,
-  filters: FeedFilters = NO_FILTERS,
-): Event[] {
-  const visible = events.filter((ev) => {
-    if (filters.cost === "free" && !ev.is_free) return false;
-    if (filters.cost === "paid" && ev.is_free) return false;
-    if (filters.org !== "all" && ev.host_name !== filters.org) return false;
-    return true;
-  });
-
-  return visible
+export function personalizedFeed(events: Event[], taste: Taste): Event[] {
+  return events
     .map((event, index) => ({ event, index, score: matchScore(event, taste) }))
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.event);
-}
-
-/** Distinct hosting organizations in the feed, alphabetical for a stable menu. */
-export function organizations(events: Event[]): string[] {
-  const names = new Set<string>();
-  for (const ev of events) if (ev.host_name) names.add(ev.host_name);
-  return [...names].sort((a, b) => a.localeCompare(b));
 }
