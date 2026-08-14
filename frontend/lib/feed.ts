@@ -8,18 +8,6 @@ import { sameCategory } from "@/lib/categories";
 const TOPIC_WEIGHT = 3;
 const ACCESS_WEIGHT = 1;
 
-export type FeedFilters = {
-  /** "all" keeps both; the member opts into one side explicitly. */
-  cost: "all" | "free" | "paid";
-  /** Host name, or "all". Matched exactly against Event.host_name. */
-  org: string;
-};
-
-export const NO_FILTERS: FeedFilters = { cost: "all", org: "all" };
-
-export const filtersActive = (f: FeedFilters) =>
-  f.cost !== "all" || f.org !== "all";
-
 /**
  * The two profile fields that affect ordering. Taken as plain arrays rather
  * than the whole `Me` so callers can memoize on exactly what matters — patching
@@ -55,27 +43,37 @@ export function matchScore(event: Event, taste: Taste): number {
  * ties here fall back to that original index so the feed never reshuffles
  * between renders.
  */
-export function personalizedFeed(
-  events: Event[],
-  taste: Taste,
-  filters: FeedFilters = NO_FILTERS,
-): Event[] {
-  const visible = events.filter((ev) => {
-    if (filters.cost === "free" && !ev.is_free) return false;
-    if (filters.cost === "paid" && ev.is_free) return false;
-    if (filters.org !== "all" && ev.host_name !== filters.org) return false;
+/**
+ * One card per program, rather than one per date.
+ *
+ * A weekly program is stored as a dated row per occurrence, because capacity,
+ * saves and reminders each attach to a date and a virtual occurrence has
+ * nothing to attach to. Browsing one at a time, that turned one agency's eight
+ * programs into seventy near-identical cards — the same title twelve times over
+ * before the feed moved on.
+ *
+ * Each series collapses to its soonest upcoming date, which is the one a member
+ * can actually act on. The rest aren't dropped from the product: the card says
+ * how often it repeats, and saving a series program still enrols them across
+ * the run the same way it always did.
+ *
+ * Relies on a series' earliest date arriving first, which the server's
+ * (starts_at, created_at, id) order gives and personalizedFeed preserves —
+ * occurrences of one series all score the same, so nothing reorders them.
+ */
+export function oneCardPerProgram(events: Event[]): Event[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (!event.series_id) return true;
+    if (seen.has(event.series_id)) return false;
+    seen.add(event.series_id);
     return true;
   });
+}
 
-  return visible
+export function personalizedFeed(events: Event[], taste: Taste): Event[] {
+  return events
     .map((event, index) => ({ event, index, score: matchScore(event, taste) }))
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.event);
-}
-
-/** Distinct hosting organizations in the feed, alphabetical for a stable menu. */
-export function organizations(events: Event[]): string[] {
-  const names = new Set<string>();
-  for (const ev of events) if (ev.host_name) names.add(ev.host_name);
-  return [...names].sort((a, b) => a.localeCompare(b));
 }

@@ -36,18 +36,34 @@ import { HeadCursor } from "@/components/HeadCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { SavedEvents } from "@/components/SavedEvents";
+import { CATEGORIES } from "@/lib/categories";
+import { oneCardPerProgram, personalizedFeed } from "@/lib/feed";
 import {
-  CATEGORIES,
-  FALLBACK_CATEGORY,
-  categoryStyle,
-} from "@/lib/categories";
+  bucketsFor,
+  dimensionByKey,
+  groupByBucket,
+  type DimensionKey,
+} from "@/lib/dimensions";
 import {
-  NO_FILTERS,
-  filtersActive,
-  organizations,
-  personalizedFeed,
-  type FeedFilters,
-} from "@/lib/feed";
+  AccountChip,
+  SeeEventsBy,
+  ViewToggle,
+  type ViewMode,
+} from "@/components/member/MemberChrome";
+import { LoginOverlay } from "@/components/member/LoginOverlay";
+import { EventDetailModal } from "@/components/member/EventDetailModal";
+import {
+  GridFeed,
+  SavedEventsButton,
+  SearchBox,
+} from "@/components/member/GridFeed";
+import { RegisterPrompt } from "@/components/member/RegisterPrompt";
+import {
+  BucketStepper,
+  CardDropTab,
+  SaveZone,
+  WideEventCard,
+} from "@/components/member/FeedParts";
 
 const DROP_THRESHOLD = 150; // drag-down px to save
 const SETTINGS_THRESHOLD = 130; // drag-up px to open settings
@@ -57,18 +73,6 @@ const NAV_HOVER_MS = 1500; // hover-dwell on a side zone to move
 const NAV_PRESS_MS = 500; // press-and-hold a side zone to move (also covers touch)
 const NAV_PEEK = 96; // px the whole carousel slides while a side dwell builds
 const BERRY = "#E8318A"; // card header + primary accent
-
-// How each side card sits: translate px, scale, opacity, stacking.
-const NEIGHBOR: Record<1 | 2, { x: number; scale: number; opacity: number; z: number }> = {
-  1: { x: 380, scale: 0.9, opacity: 0.5, z: 20 },
-  2: { x: 650, scale: 0.78, opacity: 0.22, z: 10 },
-};
-
-// Topic icon + colour comes from the shared taxonomy in lib/categories, so the
-// stepper, the card header, the signup chips, and the host-side picker can't
-// drift apart.
-const tagStyle = categoryStyle;
-
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 // Card date format, e.g. "July 13, 2026".
@@ -104,9 +108,6 @@ export function EventsView({
   );
   const [view, setView] = useState<"events" | "settings">("events");
   const [confirming, setConfirming] = useState(false);
-  // Member-chosen filters. Personalization only ever reorders the feed; these
-  // are the one thing that removes cards, and only because the member asked.
-  const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
 
   const [holdProgress, setHoldProgress] = useState(0);
   const [flying, setFlying] = useState(false);
@@ -130,6 +131,20 @@ export function EventsView({
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
+  // One card at a time, or the grid. The grid is a placeholder layout.
+  const [viewMode, setViewMode] = useState<ViewMode>("carousel");
+  // How the feed is grouped for the stepper — the "See events by" choice.
+  const [dimensionKey, setDimensionKey] = useState<DimensionKey>("org");
+  const [dimOpen, setDimOpen] = useState(false);
+  // The program someone was looking at when they were asked to sign in, and
+  // the one to offer registration for once they have.
+  const [authFor, setAuthFor] = useState<Event | null>(null);
+  const [registerFor, setRegisterFor] = useState<Event | null>(null);
+  // Open with no pending program — someone signing in of their own accord
+  // rather than because they tried to save something.
+  const [authOpen, setAuthOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [detailFor, setDetailFor] = useState<Event | null>(null);
 
   const [saveReveal, setSaveReveal] = useState(0);
   const [settingsReveal, setSettingsReveal] = useState(0);
@@ -147,7 +162,7 @@ export function EventsView({
   const peekX = useMotionValue(0);
 
   const cardWrapRef = useRef<HTMLDivElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null); // fly target: the drop zone
+  const dropRef = useRef<HTMLButtonElement>(null); // fly target: the drop zone
   const peekSideRef = useRef<"left" | "right" | null>(null);
 
   // Which side zone is currently dwelling + how far along (0→1), for its UI.
@@ -216,19 +231,37 @@ export function EventsView({
   // text-to-speech — which has no bearing on order.
   const interests = me?.interest_categories;
   const accessPrefs = me?.accessibility_prefs;
-  const feed = useMemo(
-    () =>
-      personalizedFeed(
-        events,
-        { interests: interests ?? [], accessPrefs: accessPrefs ?? [] },
-        filters,
-      ),
-    [events, interests, accessPrefs, filters],
+  const scoredFeed = useMemo(() => {
+    // A program that already happened is not a thing anyone can attend, and
+    // the design's "Today / Tomorrow" headings assume it's gone. Undated
+    // programs stay — "date to be announced" is still upcoming.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const upcoming = events.filter(
+      (ev) => !ev.starts_at || new Date(ev.starts_at) >= todayStart,
+    );
+    return personalizedFeed(upcoming, {
+      interests: interests ?? [],
+      accessPrefs: accessPrefs ?? [],
+    });
+  }, [events, interests, accessPrefs]);
+
+  // What "See events by" is grouping on. Declared before the feed because the
+  // one-at-a-time order depends on it.
+  const dimension = useMemo(
+    () => dimensionByKey(dimensionKey),
+    [dimensionKey],
   );
 
-  // Every hosting org in the unfiltered feed, so choosing one org doesn't
-  // collapse the menu you'd use to choose a different one.
-  const orgs = useMemo(() => organizations(events), [events]);
+  // The order Next and Back walk: one card per program rather than one per
+  // date, then each stepper bucket's programs together in the order the stepper
+  // shows them. The grid keeps `scoredFeed` — it lays programs out under day
+  // headings, where a repeating program belongs on each day it runs, and a
+  // route through the buckets would only scramble the days.
+  const feed = useMemo(
+    () => groupByBucket(oneCardPerProgram(scoredFeed), dimension),
+    [scoredFeed, dimension],
+  );
 
   // A filter change can shorten the feed out from under the cursor.
   useEffect(() => {
@@ -256,27 +289,20 @@ export function EventsView({
   }, []);
 
   // Non-wrapping window: the five cards always read left→right in order.
-  const slotEvent = useCallback(
-    (offset: number): Event | null => {
-      const len = feed.length;
-      if (len === 0) return null;
-      // 5+ events: wrap so every slot shows a real card; fewer: blanks at the ends.
-      if (len >= 5) return feed[(((i + offset) % len) + len) % len];
-      const idx = i + offset;
-      return idx >= 0 && idx < len ? feed[idx] : null;
-    },
-    [feed, i],
-  );
 
-  // Distinct topic tags in first-appearance order.
-  const tags = useMemo(() => {
-    const first = new Map<string, number>();
-    feed.forEach((ev, idx) => {
-      const t = ev.category || FALLBACK_CATEGORY;
-      if (!first.has(t)) first.set(t, idx);
-    });
-    return [...first.entries()].map(([tag, index]) => ({ tag, index }));
-  }, [feed]);
+  // Buckets of the chosen dimension, in the order they appear in the feed.
+  // Read off the grouped feed, so each bucket's index is the start of a
+  // contiguous run and jumping to a dot lands on that run's first program.
+  const buckets = useMemo(
+    () => bucketsFor(feed, dimension),
+    [feed, dimension],
+  );
+  // Which bucket the current card belongs to — what the stepper highlights and
+  // what the label under the dropdown names.
+  const activeBucket = current
+    ? dimension.bucket(current)
+    : { id: "", label: "", color: "#8A8AA0" };
+
 
   // Read `saved` through a ref so `attend` (and everything built on it) keeps
   // a stable identity across saves.
@@ -290,15 +316,38 @@ export function EventsView({
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;
 
-  const toSignIn = useCallback(
-    (ev: Event) => {
-      // Carry the program, so signing in returns to it and finishes the save
-      // rather than dropping someone back on the feed to find it again.
-      const next = encodeURIComponent(`/events/${ev.id}?save=1`);
-      router.push(`/signup?next=${next}`);
-    },
-    [router],
-  );
+  // Sign in over the feed rather than navigating away: the program stays on
+  // screen behind the overlay, so there is nothing to find again afterwards.
+  const toSignIn = useCallback((ev: Event) => {
+    setAuthFor(ev);
+    setAuthOpen(true);
+  }, []);
+
+  // Re-read the profile so the feed, the saved list and the chrome all agree
+  // that somebody is here now.
+  const handleSignedIn = useCallback(async () => {
+    setAuthOpen(false);
+    const pending = authFor;
+    setAuthFor(null);
+    try {
+      const [profile, attended] = await Promise.all([
+        api<Me>("/users/me"),
+        // Their saved programs, which were unreadable a moment ago. Without
+        // this the count sits at zero and the list looks empty until a reload
+        // — someone signs in precisely to see this and finds nothing.
+        api<Event[]>("/users/me/events").catch(() => [] as Event[]),
+      ]);
+      setMe(profile);
+      setSaved((prevSaved) => {
+        const merged = new Set(prevSaved);
+        attended.forEach((ev) => merged.add(ev.id));
+        return merged;
+      });
+    } catch {
+      /* the cookie is set; the next read will pick the profile up */
+    }
+    if (pending) setRegisterFor(pending);
+  }, [authFor]);
 
   const attend = useCallback(
     async (ev: Event) => {
@@ -332,9 +381,50 @@ export function EventsView({
     [toSignIn],
   );
 
+  const unsave = useCallback(async (ev: Event) => {
+    setSaved((prevSaved) => {
+      const next = new Set(prevSaved);
+      next.delete(ev.id);
+      return next;
+    });
+    setSrMessage(`Removed ${ev.title}`);
+    try {
+      await api(`/events/${ev.id}/attend`, { method: "DELETE" });
+    } catch {
+      // Put it back rather than show it gone when it isn't.
+      setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
+      setSrMessage(`Could not remove ${ev.title}.`);
+    }
+  }, []);
+
+  const toggleSave = useCallback(
+    (ev: Event) => {
+      if (savedRef.current.has(ev.id)) void unsave(ev);
+      else void attend(ev);
+    },
+    [attend, unsave],
+  );
+
+  // Counting the click before leaving; losing the count must never cost the
+  // member the link.
+  const openRegistration = useCallback((ev: Event) => {
+    if (!ev.registration_url) return;
+    window.open(ev.registration_url, "_blank", "noopener,noreferrer");
+    void api(`/events/${ev.id}/registration-click`, { method: "POST" }).catch(
+      () => {},
+    );
+  }, []);
+
   const saveCurrent = useCallback(async () => {
     const ev = feed[i];
     if (!ev) return;
+    // Only celebrate a save that actually happened. Signed out this bounces to
+    // the sign-in overlay, and already-saved is a no-op — sweeping "Saved!"
+    // across the card in either case tells the member something untrue.
+    if (!signedInRef.current || savedRef.current.has(ev.id)) {
+      void attend(ev);
+      return;
+    }
     setConfirming(true);
     void attend(ev);
     window.setTimeout(() => setConfirming(false), 1300);
@@ -633,24 +723,6 @@ export function EventsView({
     [setPref],
   );
 
-  // ---- filters (member-chosen; reset to the first card so the best match for
-  // the new choice is what they see) ----
-  const cycleCost = useCallback(() => {
-    setFilters((f) => ({
-      ...f,
-      cost: f.cost === "all" ? "free" : f.cost === "free" ? "paid" : "all",
-    }));
-    setI(0);
-  }, []);
-  const chooseOrg = useCallback((org: string) => {
-    setFilters((f) => ({ ...f, org }));
-    setI(0);
-  }, []);
-  const clearFilters = useCallback(() => {
-    setFilters(NO_FILTERS);
-    setI(0);
-  }, []);
-
   const doLogout = useCallback(async () => {
     try {
       await logout();
@@ -661,19 +733,33 @@ export function EventsView({
   }, [router]);
 
   // The four card actions, shared by voice + head-tracking for identical behavior.
+  // Voice and head-tracking both drive these. In the grid there is no focused
+  // card, so next/back/add would move and save something invisible — the head
+  // cursor would fill and a program nobody had looked at would be saved. Only
+  // opening the saved list still makes sense there.
+  const cardActionsLive = view !== "settings" && viewMode === "carousel";
   const actionHandlers = useMemo(
     () => ({
       onNext: () => {
-        if (view !== "settings") next();
+        if (cardActionsLive) next();
       },
-      onBack: () => (view === "settings" ? closeSettings() : prev()),
+      onBack: () =>
+        view === "settings" ? closeSettings() : cardActionsLive && prev(),
       onAdd: () => {
-        if (view !== "settings") void dragToAttend();
+        if (cardActionsLive) void dragToAttend();
       },
       onSettings: () =>
         view === "settings" ? closeSettings() : openSettings(),
     }),
-    [view, next, prev, dragToAttend, closeSettings, openSettings],
+    [
+      view,
+      cardActionsLive,
+      next,
+      prev,
+      dragToAttend,
+      closeSettings,
+      openSettings,
+    ],
   );
 
   // ---- voice commands (continuous while enabled) ----
@@ -702,15 +788,34 @@ export function EventsView({
     view === "settings" || a11yOpen,
   );
 
+  // Say which program is in focus. Arrowing through the whole feed used to be
+  // silent for a screen reader: the card is a div, not a live region, so
+  // nothing announced that anything had changed.
+  useEffect(() => {
+    if (!current || view !== "events" || viewMode !== "carousel") return;
+    const when = current.starts_at
+      ? new Date(current.starts_at).toLocaleDateString(undefined, {
+          month: "long",
+          day: "numeric",
+        })
+      : "date to be announced";
+    setSrMessage(
+      `${current.title}. ${when}. ${current.location ?? ""}. ${i + 1} of ${feed.length}.`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, view, viewMode]);
+
   // ---- text-to-speech: read the current event when it changes ----
   useEffect(() => {
-    if (ttsEnabled && current && view === "events") {
+    // Nothing to read in the grid: there is no "current card" on screen, so
+    // reading one aloud describes something the listener can't find.
+    if (ttsEnabled && current && view === "events" && viewMode === "carousel") {
       speak(eventToSpeech(current));
     } else {
       cancelSpeech();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [i, current?.id, ttsEnabled, view]);
+  }, [i, current?.id, ttsEnabled, view, viewMode]);
 
   // ---- keyboard ----
   useEffect(() => {
@@ -719,6 +824,25 @@ export function EventsView({
         if (e.key === "Escape" || e.key === "ArrowDown") closeSettings();
         return;
       }
+      // Don't steal arrows from whatever the person is actually using. A
+      // select, a text field or an open menu owns its own arrow keys; swallowing
+      // them here made the organization picker unusable and, worse, started a
+      // hold-to-save the member could neither see nor cancel.
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+          target.isContentEditable ||
+          target.closest('[role="menu"]') ||
+          target.closest('[role="dialog"]'))
+      ) {
+        return;
+      }
+      // The grid has no focused card, so the card actions have nothing to act
+      // on. Firing them anyway saved programs nobody had seen.
+      if (viewMode !== "carousel") return;
+      // Any overlay owns the keyboard while it's up.
+      if (authOpen || registerFor || detailFor || a11yOpen || dimOpen) return;
       if (flying) return;
       switch (e.key) {
         case "ArrowRight":
@@ -768,9 +892,6 @@ export function EventsView({
   }
 
   const alreadySaved = current ? saved.has(current.id) : false;
-  // "Nothing to show" has two very different causes, and telling someone there
-  // are no programs when they've just filtered them all out is a dead end.
-  const filteredOut = events.length > 0 && feed.length === 0;
   const empty = status === "empty" || !current;
 
   return (
@@ -781,7 +902,7 @@ export function EventsView({
       className="relative h-dvh w-full select-none overflow-hidden"
     >
       {/* ambient ground */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#ffffff_0%,#EEEBF5_55%,#E6E1F2_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-white" />
 
       {/* head tracking: cursor + one-time calibration overlay */}
       {headEnabled && headSupported && <HeadCursor cursor={cursor} />}
@@ -836,36 +957,18 @@ export function EventsView({
         </div>
       )}
 
-      {/* Log out, or the way in for someone who arrived from a shared link. */}
-      {signedIn ? (
-        <button
-          onClick={doLogout}
-          aria-label="Log out"
-          className="absolute right-[4.5rem] top-4 z-50 grid h-12 w-12 place-items-center rounded-full bg-white text-pop shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <path d="M21 12H9" />
-          </svg>
-        </button>
-      ) : (
-        <button
-          onClick={() => router.push("/signup")}
-          className="absolute right-[4.5rem] top-4 z-50 rounded-full bg-white px-5 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
-        >
-          Sign in
-        </button>
-      )}
+      {/* View toggle, top left. */}
+      <div className="absolute left-4 top-4 z-50">
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
+      </div>
+
+      {/* Who you are, top right. Signed out it is the way in. */}
+      <div className="absolute right-4 top-4 z-50">
+        <AccountChip
+          name={me ? `${me.first_name} ${me.last_name.charAt(0)}.` : null}
+          onClick={() => (signedIn ? void doLogout() : setAuthOpen(true))}
+        />
+      </div>
 
       {/* accessibility settings */}
       <AccessibilityMenu
@@ -884,7 +987,10 @@ export function EventsView({
         interests={me?.interest_categories ?? []}
         onToggleInterest={toggleInterest}
         signedIn={signedIn}
-        onSignIn={() => router.push("/signup")}
+        onSignIn={() => {
+          setAuthFor(null);
+          setAuthOpen(true);
+        }}
       />
 
       {/* Saved Events panel (opens via the settings gesture) */}
@@ -892,61 +998,89 @@ export function EventsView({
         me={me}
         reveal={settingsReveal}
         onClose={closeSettings}
-        onSignIn={() => router.push("/signup")}
+        onSignIn={() => {
+          setAuthFor(null);
+          setAuthOpen(true);
+        }}
+        saved={saved}
+        onToggleSave={toggleSave}
+        onOpen={setDetailFor}
       />
 
       {/* ---------------- EVENTS ---------------- */}
       <div
-        className="absolute inset-0 flex flex-col items-center px-6 pb-44 pt-8"
+        className={`absolute inset-0 flex flex-col items-center px-6 pt-8 ${
+          viewMode === "grid" ? "pb-8" : "pb-44"
+        }`}
         style={{
           opacity: 1 - settingsReveal,
           pointerEvents: view === "settings" ? "none" : "auto",
         }}
       >
-        {events.length > 0 && (
-          <FilterBar
-            filters={filters}
-            orgs={orgs}
-            shown={feed.length}
-            total={events.length}
-            onCycleCost={cycleCost}
-            onChooseOrg={chooseOrg}
-            onClear={clearFilters}
-          />
-        )}
+        {/* No filter bar: the design doesn't have one. Cost and organization
+            are two of the six ways to group instead, which is the design's
+            answer to the same need. */}
 
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
             <p className="font-display text-3xl text-muted">
-              {filteredOut
-                ? "Nothing matches those choices."
-                : "No programs yet. Check back soon."}
+              No programs yet. Check back soon.
             </p>
-            {filteredOut && (
-              <button
-                onClick={() => setFilters(NO_FILTERS)}
-                className="rounded-2xl bg-accent px-8 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
-              >
-                Show all programs
-              </button>
-            )}
           </div>
         ) : (
           <>
-            {/* category header */}
-            <p className="text-sm font-medium text-muted">Category:</p>
-            <h1 className="font-display text-4xl font-extrabold text-ink">
-              {current.category || FALLBACK_CATEGORY}
-            </h1>
+            {viewMode === "grid" ? (
+              <div className="flex w-full max-w-6xl flex-wrap items-start justify-between gap-4 pb-6">
+                <SeeEventsBy
+                  dimension={dimension}
+                  open={dimOpen}
+                  onOpenChange={setDimOpen}
+                  onSelect={(key) => setDimensionKey(key)}
+                  align="left"
+                />
+                <div className="flex flex-col items-end gap-4">
+                  <SearchBox value={query} onChange={setQuery} />
+                  <SavedEventsButton
+                    count={saved.size}
+                    onClick={openSettings}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <SeeEventsBy
+                  dimension={dimension}
+                  open={dimOpen}
+                  onOpenChange={setDimOpen}
+                  onSelect={(key) => {
+                    setDimensionKey(key);
+                    setI(0);
+                    setSrMessage(
+                      `Showing events by ${dimensionByKey(key).heading}.`,
+                    );
+                  }}
+                />
+                <p className="mt-3 font-display text-xl font-semibold text-ink">
+                  {activeBucket.label}
+                </p>
+                <BucketStepper
+                  buckets={buckets}
+                  activeId={activeBucket.id}
+                  onJump={setI}
+                />
+              </>
+            )}
 
-            {/* tag stepper */}
-            <TagStepper
-              tags={tags}
-              activeTag={current.category || FALLBACK_CATEGORY}
-              onJump={setI}
-            />
-
-            {/* carousel */}
+            {viewMode === "grid" ? (
+              <GridFeed
+                events={scoredFeed}
+                saved={saved}
+                query={query}
+                onOpen={setDetailFor}
+                onToggleSave={toggleSave}
+              />
+            ) : (
+            /* carousel */
             <div className="relative flex w-full flex-1 items-center justify-center">
               <SideZone
                 side="left"
@@ -978,10 +1112,6 @@ export function EventsView({
                 style={{ x: peekX }}
                 className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
               >
-                {[-2, -1, 1, 2].map((off) => (
-                  <NeighborCard key={off} event={slotEvent(off)} offset={off} />
-                ))}
-
                 <motion.div
                   ref={cardWrapRef}
                   style={{
@@ -991,7 +1121,7 @@ export function EventsView({
                     opacity: cardOpacity,
                     zIndex: 30,
                   }}
-                  className="pointer-events-auto relative aspect-[16/9] w-full max-w-[760px]"
+                  className="pointer-events-auto relative aspect-[2.3/1] w-full max-w-[880px]"
                 >
                 {/* Focused card slides in from the travel direction on next/back.
                     Enter-only (keyed by id) so it won't fight the drag/fly transforms. */}
@@ -1037,356 +1167,97 @@ export function EventsView({
                   onPointerDown={() => startSaveHold(HOLD_TOUCH_MS)}
                   onPointerUp={cancelSaveHold}
                   onPointerCancel={cancelSaveHold}
-                  className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] bg-card shadow-card active:cursor-grabbing"
+                  className="absolute inset-0 cursor-grab active:cursor-grabbing"
                 >
-                  <EventCard event={current} saved={alreadySaved} />
-                  <HoldBadge progress={holdProgress} />
-                  <AnimatePresence>
-                    {confirming && <ConfirmSweep />}
-                  </AnimatePresence>
+                  {/* Behind the card so only the rounded tongue shows. */}
+                  <CardDropTab />
+                  <div className="relative h-full w-full overflow-hidden rounded-[28px] border-[1.5px] border-[#9A9A9A] bg-white">
+                    <WideEventCard event={current} saved={alreadySaved} />
+                    <HoldBadge progress={holdProgress} />
+                    <AnimatePresence>
+                      {confirming && <ConfirmSweep />}
+                    </AnimatePresence>
+                  </div>
                 </motion.div>
                 </motion.div>
               </motion.div>
               </motion.div>
             </div>
+            )}
           </>
         )}
 
-        {/* drop zone: drag + hold-to-save target */}
-        <DropZone
-          ref={dropRef}
-          active={saveReveal > 0 || dropPulse}
-          onSave={saveFromButton}
-        />
+        {/* Drop target for drag + hold-to-save, and the saved count. */}
+        {viewMode === "carousel" && (
+          <SaveZone
+            ref={dropRef}
+            active={saveReveal > 0 || dropPulse}
+            count={saved.size}
+            onSave={saveFromButton}
+            onOpen={openSettings}
+          />
+        )}
       </div>
 
-      {/* saved events (hidden while the panel is open so it can't float on top) */}
-      {view !== "settings" && (
-        <button
-          onClick={openSettings}
-          className="absolute bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-xl border-2 border-edge bg-white px-4 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-[1.02]"
-        >
-          Saved events
-          <BookmarkIcon />
-          {saved.size > 0 && (
-            <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1 text-sm text-white">
-              {saved.size}
-            </span>
-          )}
-        </button>
+      {authOpen && (
+        <LoginOverlay
+          onClose={() => {
+            setAuthOpen(false);
+            setAuthFor(null);
+          }}
+          onSignedIn={() => void handleSignedIn()}
+          onSignUp={() => {
+            // Carry the program through sign-up too, not just sign-in.
+            const next = authFor
+              ? `?next=${encodeURIComponent(`/events/${authFor.id}?save=1`)}`
+              : "";
+            router.push(`/signup${next}`);
+          }}
+        />
+      )}
+
+      {detailFor && (
+        <EventDetailModal
+          event={detailFor}
+          saved={saved.has(detailFor.id)}
+          onClose={() => setDetailFor(null)}
+          onSave={(ev) => {
+            setDetailFor(null);
+            void attend(ev);
+          }}
+          onOpenRegistration={openRegistration}
+        />
+      )}
+
+      {registerFor && (
+        <RegisterPrompt
+          title={registerFor.title}
+          external={
+            registerFor.requires_signup &&
+            registerFor.registration_mode === "external" &&
+            !!registerFor.registration_url
+          }
+          onSkip={() => setRegisterFor(null)}
+          onRegister={() => {
+            const ev = registerFor;
+            setRegisterFor(null);
+            void attend(ev);
+            // If registration lives on the organizer's site, saving is not
+            // registering — send them there too, or they turn up unregistered
+            // having pressed a button that said Register.
+            if (
+              ev.requires_signup &&
+              ev.registration_mode === "external" &&
+              ev.registration_url
+            ) {
+              openRegistration(ev);
+            }
+          }}
+        />
       )}
     </motion.main>
   );
 }
-
-/* ---------------- card ---------------- */
-
-const EventCard = memo(function EventCard({
-  event,
-  saved,
-}: {
-  event: Event;
-  saved: boolean;
-}) {
-  const headerColor = tagStyle(event.category || "General").color;
-  return (
-    <div className="flex h-full flex-col">
-      {/* header tinted by the event's category + braille handle / drag-to-save */}
-      <div
-        className="flex items-center justify-between px-5 py-3"
-        style={{ background: headerColor }}
-      >
-        <BrailleHandle />
-        <span className="flex items-center gap-2 font-semibold text-white">
-          {saved ? "Saved ✓" : "Drag to save"}
-          <span aria-hidden>↓</span>
-        </span>
-      </div>
-
-      {/* body: image left, details right */}
-      <div className="flex flex-1 gap-5 p-5">
-        <div className="relative h-full w-[42%] shrink-0 overflow-hidden rounded-2xl bg-edge">
-          {event.cover_image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={event.cover_image_url}
-              alt=""
-              className="h-full w-full object-cover"
-              draggable={false}
-            />
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="font-display text-2xl font-extrabold leading-tight text-ink">
-            {event.title}
-          </h2>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-ink">
-            {fullDate(event.starts_at) && (
-              <span className="inline-flex items-center gap-1.5">
-                <CalendarIcon /> {fullDate(event.starts_at)}
-              </span>
-            )}
-            {event.location && (
-              <span className="inline-flex items-center gap-1.5">
-                <PinIcon /> {event.location}
-              </span>
-            )}
-          </div>
-          <p className="line-clamp-4 text-sm text-muted">{event.description}</p>
-          <p className="mt-auto text-xs font-semibold uppercase tracking-wide text-pop">
-            {countdown(event.starts_at)}
-            {saved ? " · Saved ✓" : ""}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-function BrailleHandle() {
-  return (
-    <div className="grid grid-cols-3 gap-1" aria-hidden>
-      {Array.from({ length: 6 }).map((_, k) => (
-        <span key={k} className="h-1.5 w-1.5 rounded-full bg-white/90" />
-      ))}
-    </div>
-  );
-}
-
-/* ---------------- neighbours ---------------- */
-
-// Neighbour preview: a category-tinted top bar over a plain body, no details.
-function CardSkeleton({ event }: { event: Event }) {
-  const barColor = tagStyle(event.category || "General").color;
-  return (
-    <div className="flex h-full flex-col" aria-hidden>
-      <div className="h-11 w-full" style={{ background: barColor, opacity: 0.65 }} />
-      <div className="flex-1 bg-card" />
-    </div>
-  );
-}
-
-const NeighborCard = memo(function NeighborCard({
-  event,
-  offset,
-}: {
-  event: Event | null;
-  offset: number;
-}) {
-  const mag = (Math.abs(offset) === 1 ? 1 : 2) as 1 | 2;
-  const cfg = NEIGHBOR[mag];
-  const tx = (offset < 0 ? -1 : 1) * cfg.x;
-  return (
-    <div
-      className="pointer-events-none absolute inset-0 grid place-items-center"
-      style={{ zIndex: cfg.z }}
-      aria-hidden
-    >
-      <motion.div
-        initial={false}
-        animate={{ x: tx, scale: cfg.scale, opacity: cfg.opacity }}
-        transition={{ type: "spring", stiffness: 260, damping: 30 }}
-        style={{ width: "min(86vw, 760px)" }}
-        className="aspect-[16/9] overflow-hidden rounded-[28px] shadow-card"
-      >
-        {event ? (
-          <div className="h-full w-full bg-card">
-            <CardSkeleton event={event} />
-          </div>
-        ) : (
-          <div className="h-full w-full bg-edge" />
-        )}
-      </motion.div>
-    </div>
-  );
-});
-
-/* ---------------- filters ---------------- */
-
-const COST_LABEL: Record<FeedFilters["cost"], string> = {
-  all: "Free & paid",
-  free: "Free only",
-  paid: "Paid only",
-};
-// What one more tap will switch to — spoken in the button's accessible name so
-// the control explains itself without a legend.
-const COST_NEXT: Record<FeedFilters["cost"], string> = {
-  all: "free only",
-  free: "paid only",
-  paid: "free and paid",
-};
-
-// Two controls, each showing one choice at a time — deliberately not a filter
-// panel. Cost cycles (only three states); organizations use a native select so
-// a long list stays one tap and reads correctly to a screen reader.
-const FilterBar = memo(function FilterBar({
-  filters,
-  orgs,
-  shown,
-  total,
-  onCycleCost,
-  onChooseOrg,
-  onClear,
-}: {
-  filters: FeedFilters;
-  orgs: string[];
-  shown: number;
-  total: number;
-  onCycleCost: () => void;
-  onChooseOrg: (org: string) => void;
-  onClear: () => void;
-}) {
-  const active = filtersActive(filters);
-  return (
-    <div className="mb-1 flex w-full max-w-2xl flex-wrap items-center justify-center gap-2">
-      <button
-        type="button"
-        onClick={onCycleCost}
-        aria-label={`Cost: ${COST_LABEL[filters.cost]}. Activate to show ${
-          COST_NEXT[filters.cost]
-        }.`}
-        className={`rounded-full border-2 bg-white px-5 py-2.5 font-semibold shadow-card transition-transform hover:scale-[1.03] focus-visible:scale-[1.03] ${
-          filters.cost === "all"
-            ? "border-edge text-ink"
-            : "border-accent text-accent"
-        }`}
-      >
-        <span aria-hidden>💲 </span>
-        {COST_LABEL[filters.cost]}
-      </button>
-
-      <label className="sr-only" htmlFor="feed-org">
-        Show programs from
-      </label>
-      <select
-        id="feed-org"
-        value={filters.org}
-        onChange={(e) => onChooseOrg(e.target.value)}
-        className={`max-w-[16rem] truncate rounded-full border-2 bg-white px-5 py-2.5 font-semibold shadow-card outline-none ${
-          filters.org === "all"
-            ? "border-edge text-ink"
-            : "border-accent text-accent"
-        }`}
-      >
-        <option value="all">🏠 All organizations</option>
-        {orgs.map((org) => (
-          <option key={org} value={org}>
-            {org}
-          </option>
-        ))}
-      </select>
-
-      {active && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="rounded-full px-4 py-2.5 font-semibold text-muted underline underline-offset-2 hover:text-ink"
-        >
-          Show all
-        </button>
-      )}
-
-      <p className="sr-only" role="status" aria-live="polite">
-        {active
-          ? `Showing ${shown} of ${total} programs`
-          : `Showing all ${total} programs`}
-      </p>
-    </div>
-  );
-});
-
-/* ---------------- stepper ---------------- */
-
-const TagStepper = memo(function TagStepper({
-  tags,
-  activeTag,
-  onJump,
-}: {
-  tags: { tag: string; index: number }[];
-  activeTag: string;
-  onJump: (i: number) => void;
-}) {
-  return (
-    <div className="relative mt-6 w-full max-w-2xl">
-      <div className="absolute left-[8%] right-[8%] top-[24px] h-1 rounded bg-edge" />
-      <div
-        className="relative flex justify-between"
-        role="tablist"
-        aria-label="Topics"
-      >
-        {tags.map(({ tag, index }) => {
-          const active = tag === activeTag;
-          const { emoji, color } = tagStyle(tag);
-          return (
-            <button
-              key={tag}
-              onClick={() => onJump(index)}
-              role="tab"
-              aria-selected={active}
-              aria-label={`${tag}${active ? ", current topic" : ""}`}
-              className="relative grid h-12 w-12 place-items-center"
-            >
-              <span
-                className="absolute inset-0 rounded-full border-[3px] bg-white"
-                style={{ borderColor: color }}
-              />
-              {active && (
-                <motion.span
-                  layoutId="tag-indicator"
-                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                  className="absolute inset-0 rounded-full border-[3px]"
-                  style={{ background: color, borderColor: color }}
-                />
-              )}
-              <span
-                className="relative z-10 text-xl"
-                style={{ transform: active ? "scale(1.1)" : "none" }}
-                aria-hidden
-              >
-                {emoji}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
-
-/* ---------------- drop zone ---------------- */
-
-// Container keeps the ref (fly-target geometry); the button inside gives
-// keyboard and screen-reader users the same save action as drag/hold.
-const DropZone = memo(
-  forwardRef<HTMLDivElement, { active: boolean; onSave: () => void }>(
-    function DropZone({ active, onSave }, ref) {
-      return (
-        <div
-          ref={ref}
-          className="absolute bottom-6 left-1/2 flex h-32 w-[min(90vw,520px)] -translate-x-1/2 items-center justify-center rounded-3xl border-2 border-dashed transition-colors"
-          style={{
-            borderColor: active ? BERRY : "#C9B8D6",
-            background: active ? "rgba(232,49,138,0.10)" : "rgba(232,49,138,0.04)",
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Save this event"
-            onClick={onSave}
-            className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-3xl"
-          >
-            <span className="text-2xl" style={{ color: BERRY }} aria-hidden>
-              ↓
-            </span>
-            <span className="font-display text-lg font-semibold text-ink">
-              Drag here to save
-            </span>
-          </button>
-        </div>
-      );
-    },
-  ),
-);
 
 /* ---------------- accessibility menu ---------------- */
 
@@ -1426,7 +1297,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   onSignIn: () => void;
 }) {
   return (
-    <div className="absolute right-4 top-4 z-50">
+    // Sits under the view toggle, top left, as in the design.
+    <div className="absolute left-4 top-[4.75rem] z-50">
       {open && (
         <button
           aria-hidden
@@ -1438,11 +1310,20 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
       <button
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-label="Your settings: interests and accessibility"
-        className="relative grid h-12 w-12 place-items-center rounded-full bg-white text-accent shadow-card transition-transform hover:scale-105"
+        className="relative inline-flex items-center gap-1 rounded-full py-1 pl-1 pr-2 text-ink transition-transform hover:scale-105"
       >
         <AccessibilityIcon />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
         {listening && (
           <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-attend text-[10px] text-white shadow">
             🎤
@@ -1452,8 +1333,12 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
 
       {open && (
         <div
-          role="menu"
-          className="absolute right-0 mt-2 max-h-[80vh] w-80 overflow-y-auto rounded-2xl bg-white p-4 shadow-lift"
+          // Not role="menu": this holds headings, paragraphs and switches, none
+          // of which are menuitems. Screen readers entered application mode and
+          // then found nothing to navigate.
+          role="dialog"
+          aria-label="Your settings"
+          className="absolute left-0 mt-2 max-h-[80vh] w-80 overflow-y-auto rounded-2xl bg-white p-4 shadow-lift"
         >
           <h2 className="font-display text-lg font-bold text-ink">
             What you like
@@ -1701,13 +1586,13 @@ const SideZone = memo(function SideZone({
             e.stopPropagation();
             if (!disabled) onClick();
           }}
-          className="grid h-16 w-16 place-items-center rounded-full border-2 border-edge bg-white text-3xl text-ink shadow-card transition-transform"
+          className="grid h-[124px] w-[152px] place-items-center rounded-full border-[1.5px] border-[#9A9A9A] bg-transparent text-5xl font-light text-[#5C5C5C] transition-transform"
           style={{ transform: active ? "scale(1.08)" : "none" }}
         >
           <span aria-hidden>{isLeft ? "←" : "→"}</span>
         </button>
         <span
-          className="font-display text-lg font-semibold text-ink"
+          className="font-display text-2xl font-medium text-[#424242]"
           aria-hidden
         >
           {isLeft ? "Back" : "Next"}
@@ -1761,24 +1646,6 @@ function PinIcon() {
     </svg>
   );
 }
-
-function BookmarkIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z" />
-    </svg>
-  );
-}
-
 function AccessibilityIcon() {
   return (
     <svg

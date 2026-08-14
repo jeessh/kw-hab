@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Index, Integer, String
+from sqlalchemy import ForeignKey, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,8 +18,8 @@ class EventImage(Base):
     event_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE")
     )
-    url: Mapped[str] = mapped_column(String)
-    caption: Mapped[str | None] = mapped_column(String, nullable=True)
+    url: Mapped[str] = mapped_column(Text)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     # Explicit name to match the live database — see Event.__table_args__.

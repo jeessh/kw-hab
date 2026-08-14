@@ -21,8 +21,8 @@ type Nav = { href: string; label: string; superadminOnly?: boolean };
 
 const NAV: Nav[] = [
   { href: "/host/events", label: "Programs" },
-  { href: "/host/admins", label: "Admins", superadminOnly: true },
-  { href: "/host/members", label: "Members", superadminOnly: true },
+  { href: "/host/users", label: "Users", superadminOnly: true },
+  { href: "/host/admins", label: "Organizers", superadminOnly: true },
 ];
 
 export function AdminShell({
@@ -30,6 +30,7 @@ export function AdminShell({
   description,
   actions,
   requireSuperadmin = false,
+  bare = false,
   children,
 }: {
   title: string;
@@ -37,6 +38,9 @@ export function AdminShell({
   actions?: ReactNode;
   /** Gate the whole page, not just the nav entry. */
   requireSuperadmin?: boolean;
+  /** Resolve the session, then get out of the way — for pages that own their
+      whole layout, like the create form. */
+  bare?: boolean;
   children: (session: Session) => ReactNode;
 }) {
   const router = useRouter();
@@ -108,6 +112,8 @@ export function AdminShell({
       </Frame>
     );
   }
+
+  if (bare) return <>{children(session)}</>;
 
   return (
     <Frame session={session} pathname={pathname}>

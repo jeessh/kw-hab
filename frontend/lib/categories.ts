@@ -4,23 +4,31 @@ export type Category = CategoryStyle & { label: string };
 // The app's canonical topics. This one list drives three things that have to
 // agree, or interest-matching silently stops working:
 //   • the interest chips a member picks at signup / in settings
-//   • the topic stepper + card colours in the member feed
-//   • the category picker hosts choose from when adding a program
-// Members pick these by icon as much as by word, so keep the list short and
-// every entry visually distinct. Colours are used inline (card banners /
-// tints) so they survive Tailwind purging.
+//   • the topic grouping in the member feed
+//   • the Activity Type picker hosts choose from when adding a program
+//
+// Taken from KWHab_Event_Test_Data.xlsx — real programming from the six
+// agencies, not a vocabulary we invented. The previous list was a hackathon
+// guess and only 6 of 37 real events could be filed under it. Adding to this
+// list is expected; renaming an entry is not, because matching compares stored
+// labels (see sameCategory).
 export const CATEGORIES: Category[] = [
+  { label: "Education", emoji: "📚", color: "#4C6EE8" },
+  { label: "Social", emoji: "🎉", color: "#E86A4C" },
+  { label: "Recreation", emoji: "🎳", color: "#3AA0C2" },
+  { label: "Support Group", emoji: "🤝", color: "#2FA36B" },
   { label: "Cooking", emoji: "🍳", color: "#E8318A" },
-  { label: "Food", emoji: "🍌", color: "#E8318A" },
-  { label: "Hangout", emoji: "☕", color: "#22C55E" },
-  { label: "Sports", emoji: "🏐", color: "#3B82F6" },
-  { label: "Games", emoji: "🎮", color: "#3B82F6" },
-  { label: "Arts", emoji: "🎨", color: "#F59E0B" },
+  { label: "Fundraising", emoji: "💛", color: "#E8A33D" },
+  { label: "Youth Programs", emoji: "🧒", color: "#9B5BD6" },
+  { label: "Wellness", emoji: "🌿", color: "#2F8F5B" },
+  { label: "Fitness", emoji: "🏃", color: "#F59E0B" },
+  { label: "Arts & Crafts", emoji: "🎨", color: "#E84C88" },
   { label: "Music", emoji: "🎧", color: "#6366F1" },
-  { label: "Advice", emoji: "🌱", color: "#2FA36B" },
+  { label: "Games", emoji: "🎮", color: "#3B82F6" },
+  { label: "Sports", emoji: "🏐", color: "#22C55E" },
 ];
 
-// Shown for events with no category. Not offered as an interest — "General"
+// Shown for a program with no topic. Not offered as an interest — "General"
 // isn't a thing anyone is interested in.
 export const FALLBACK_CATEGORY = "General";
 const FALLBACK_STYLE: CategoryStyle = { emoji: "🎟️", color: "#5B5BD6" };
@@ -29,19 +37,15 @@ const BY_KEY = new Map<string, Category>(
   CATEGORIES.map((c) => [c.label.toLowerCase(), c]),
 );
 
-// Free-text categories that predate the picker. They keep their own look so
-// existing events don't change colour, but they deliberately do NOT map onto a
-// canonical topic — silently re-labelling someone's "Wellness" program as
-// "Advice" would misrepresent it. They simply score no interest match.
+// Topics from the earlier hackathon list, kept only so events created against
+// it keep a stable colour. They deliberately do NOT map onto a canonical topic
+// — silently re-filing someone's "Hangout" as "Social" would misrepresent it.
 const LEGACY_STYLES: Record<string, CategoryStyle> = {
-  "food events": { emoji: "🍽️", color: "#E84C88" },
-  sport: { emoji: "🏐", color: "#3AA0C2" },
-  "sports & rec": { emoji: "🏐", color: "#3AA0C2" },
-  "sport & rec": { emoji: "🏐", color: "#3AA0C2" },
+  hangout: { emoji: "☕", color: "#22C55E" },
+  food: { emoji: "🍌", color: "#E8318A" },
+  advice: { emoji: "🌱", color: "#2FA36B" },
+  arts: { emoji: "🎨", color: "#F59E0B" },
   newcomers: { emoji: "🧭", color: "#5B5BD6" },
-  wellness: { emoji: "🌿", color: "#2FA36B" },
-  education: { emoji: "📚", color: "#4C6EE8" },
-  social: { emoji: "🎉", color: "#E86A4C" },
   outdoors: { emoji: "🌲", color: "#2F8F5B" },
   technology: { emoji: "💻", color: "#4C6EE8" },
 };

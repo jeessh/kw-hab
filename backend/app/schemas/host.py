@@ -25,6 +25,7 @@ class HostOut(BaseModel):
     name: str
     email: str
     is_admin: bool
+    logo_url: str | None = None
     created_at: datetime
 
 
@@ -50,6 +51,8 @@ class HostCreate(BaseModel):
     password: str = Field(min_length=8)
     # Whether the new account can manage other admins. Off unless asked for.
     is_admin: bool = False
+    # Shown in the member feed's organization stepper.
+    logo_url: str | None = None
 
     _strip_name = field_validator("name")(_clean_name)
 
@@ -59,5 +62,6 @@ class HostUpdate(BaseModel):
     is_admin: bool | None = None
     # Setting this resets the account's password; omitted leaves it alone.
     password: str | None = Field(None, min_length=8)
+    logo_url: str | None = None
 
     _strip_name = field_validator("name")(_clean_name)

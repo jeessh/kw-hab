@@ -6,13 +6,17 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_host, get_db
 from app.core.storage import StorageError, upload_image
+from app.models.attendance import Attendance
 from app.models.event import Event
 from app.models.event_image import EventImage
 from app.models.host import Host
+from app.core.recurrence import RecurrenceError, describe as describe_recurrence
+from app.core.recurrence import occurrences
 from app.schemas.event import (
     EventCreate,
     EventOut,
     EventUpdate,
+    validate_pricing,
     validate_registration,
 )
 
@@ -87,13 +91,20 @@ _REQUIRED_FIELDS = frozenset(
         "is_free",
         "requires_signup",
         "registration_mode",
+        "pricing_model",
+        "event_no",
     }
 )
 
 
 # Eager loads for EventOut serialization (host_name + images); without these
 # each serialized row lazy-loads per-relation (N+1 through pgbouncer).
-_EVENT_OUT_OPTIONS = (joinedload(Event.host), selectinload(Event.images))
+_EVENT_OUT_OPTIONS = (
+    joinedload(Event.host),
+    selectinload(Event.images),
+    # Powers EventOut.saved_count without a query per row.
+    selectinload(Event.attendees),
+)
 
 
 @router.get("", response_model=list[EventOut])
@@ -153,14 +164,70 @@ def create_event(
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
-    data = body.model_dump(exclude={"gallery"})
-    event = Event(host_id=host.id, **data)
-    for img in body.gallery:
-        event.images.append(EventImage(**img.model_dump()))
-    db.add(event)
+    """Create the program — or, if it repeats, every dated occurrence of it.
+
+    Occurrences are real rows sharing a series_id rather than a rule expanded on
+    read, because capacity, saves and reminders all attach to a specific date.
+    The first occurrence is returned, since that's the one the console lands on.
+    """
+    data = body.model_dump(
+        exclude={"gallery", "frequency", "occurrence_count", "repeat_until"}
+    )
+    starts_at = data.get("starts_at")
+
+    if body.frequency and body.frequency != "once":
+        if not starts_at:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "A repeating program needs a first date.",
+            )
+        try:
+            dates = occurrences(
+                starts_at,
+                body.frequency,
+                count=body.occurrence_count,
+                until=body.repeat_until,
+            )
+        except RecurrenceError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    else:
+        dates = [starts_at]
+
+    # A one-off is its own series of one, so nothing downstream has to ask
+    # whether a program is "really" a series.
+    series_id = uuid.uuid4()
+    label = describe_recurrence(body.frequency, starts_at) if starts_at else None
+    # How long each occurrence runs, preserved across the whole series.
+    span = (
+        data["ends_at"] - starts_at
+        if data.get("ends_at") and starts_at
+        else None
+    )
+
+    created: list[Event] = []
+    for index, when in enumerate(dates, start=1):
+        row = Event(
+            **{
+                **data,
+                "starts_at": when,
+                "ends_at": when + span if span and when else data.get("ends_at"),
+            },
+            host_id=host.id,
+            series_id=series_id,
+            recurrence=label,
+            series_index=index,
+            series_total=len(dates),
+        )
+        # Gallery images belong to the occurrence people actually open.
+        if index == 1:
+            for img in body.gallery:
+                row.images.append(EventImage(**img.model_dump()))
+        db.add(row)
+        created.append(row)
+
     db.commit()
-    db.refresh(event)
-    return event
+    db.refresh(created[0])
+    return created[0]
 
 
 @router.patch("/{event_id}", response_model=EventOut)
@@ -193,6 +260,13 @@ def update_event(
         validate_registration(
             event.registration_mode, event.requires_signup, event.registration_url
         )
+        validate_pricing(
+            event.pricing_model,
+            event.price_cents,
+            event.price_group_size,
+            event.price_sessions,
+            event.price_note,
+        )
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -207,14 +281,61 @@ def delete_event(
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
-    """Archive the program. It leaves every member-facing surface immediately,
-    but the row and its attendance history stay — those counts are what the
-    organizer reports to funders, and a program members already attended is not
-    something a later mistake should be able to erase."""
+    """Archive the program. Superadmins only.
+
+    It leaves every member-facing surface immediately, but the row and its
+    attendance history stay — those counts are what the organizer reports to
+    funders, and a program members already attended is not something a later
+    mistake should be able to erase.
+
+    Removing a program is the one action here that reaches beyond the
+    organization that posted it: members have it saved, and its attendance is
+    somebody's grant evidence. An agency that needs one gone asks KW Hab, the
+    same as they do today. Editing stays with whoever owns the program.
+    """
     event = db.get(Event, event_id)
     if not event or event.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
-    if not _owns_or_admin(host, event):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+    # Superadmins always. An owner may take down a program only while nobody
+    # has saved it — the moment somebody has, removing it reaches past the
+    # agency that posted it, and it's also somebody's grant evidence. That's
+    # what makes "undo" work on a program posted seconds ago while still
+    # keeping removal a KW Hab decision once it matters.
+    if not host.is_admin:
+        if event.host_id != host.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+        saved_by = (
+            db.query(func.count(Attendance.user_id))
+            .filter(Attendance.event_id == event.id)
+            .scalar()
+            or 0
+        )
+        if saved_by:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "People have saved this program — ask KW Hab to remove it.",
+            )
     event.deleted_at = func.now()
     db.commit()
+
+
+@router.post("/{event_id}/restore", response_model=EventOut)
+def restore_event(
+    event_id: uuid.UUID,
+    host: Host = Depends(get_current_host),
+    db: Session = Depends(get_db),
+):
+    """Put an archived program back. This is what Undo calls.
+
+    Same rule as archiving: superadmins always, and an owner while nobody has
+    saved it. Nothing was destroyed, so this only has to clear the flag.
+    """
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found")
+    if not host.is_admin and event.host_id != host.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+    event.deleted_at = None
+    db.commit()
+    db.refresh(event)
+    return event

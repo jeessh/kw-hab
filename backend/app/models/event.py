@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    func,
+)
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,10 +31,54 @@ class Event(Base):
     host_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("hosts.id", ondelete="CASCADE")
     )
-    title: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, default="")
-    category: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
-    location: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Extra details shown under the description in the detail popup. Kept apart
+    # from description so the standardized pitch every listing has stays short.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
+    # What kind of thing it is, as distinct from what it is about: category is
+    # the topic (Cooking), activity_type is the shape (a class, a drop-in
+    # social, an outing). Picked from lib/activities.ts, same as category —
+    # a hand-typed value can never match a member's choice.
+    # index=True yields ix_events_activity_type, exactly what migration 0006
+    # creates — leaving it off means metadata doesn't know the index exists and
+    # the next autogenerate proposes dropping it.
+    activity_type: Mapped[str | None] = mapped_column(
+        Text, nullable=True, index=True
+    )
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Null = no limit, which is not the same as zero.
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # An identifier a person can say out loud. UUIDs are for machines; this is
+    # what a member reads down the phone and what a log entry references.
+    event_no: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=text("nextval('events_event_no_seq')"),
+        unique=True,
+    )
+    # Every occurrence of a repeating program shares this. A one-off is its own
+    # series of one, so nothing has to special-case "not a series".
+    series_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    # Kept as the agency wrote it — "Weekly (Fridays)", "Monthly (last Sat)".
+    recurrence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    series_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    series_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # free | donation | per_session | per_group | series | custom
+    pricing_model: Mapped[str] = mapped_column(
+        Text, nullable=False, default="free", server_default=text("'free'")
+    )
+    # Cents, so no float ever touches money.
+    price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_group_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Open-ended on either side: min 55 with no max reads as "55 and up".
+    min_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -36,6 +89,15 @@ class Event(Base):
         ARRAY(Text), default=list  # text[] to match the DB; see user.icons note
     )
     is_free: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Virtual or in person, and youth or everyone. Both are either/or questions
+    # a member needs answered before deciding, so they're columns rather than
+    # entries in the free-form accessibility tag array.
+    is_virtual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_youth: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     # True = the member must register; False = drop-in, just save it. Where that
     # registration happens is registration_mode's job.
     requires_signup: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -49,7 +111,7 @@ class Event(Base):
         Text, nullable=False, default=INTERNAL, server_default=text(f"'{INTERNAL}'")
     )
     registration_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -69,6 +131,7 @@ class Event(Base):
     # mismatch here makes every future revision propose spurious index churn.
     __table_args__ = (
         Index("ix_events_host", "host_id"),
+        Index("ix_events_series", "series_id"),
         Index(
             "ix_events_live",
             "starts_at",
@@ -82,6 +145,33 @@ class Event(Base):
     def host_name(self) -> str:
         """Owning organization's display name, surfaced on EventOut for dashboards."""
         return self.host.name if self.host else ""
+
+    @property
+    def price_label(self) -> str:
+        """What the cost line says, built from the structured fields."""
+        from app.core.pricing import describe
+
+        return describe(
+            self.pricing_model,
+            self.price_cents,
+            self.price_group_size,
+            self.price_sessions,
+            self.price_note,
+        )
+
+    @property
+    def saved_count(self) -> int:
+        """How many members currently have it saved.
+
+        Counted off the eager-loaded relationship rather than a per-row query;
+        `_EVENT_OUT_OPTIONS` loads attendees for exactly this.
+        """
+        return sum(1 for a in self.attendees if a.status == "saved")
+
+    @property
+    def host_logo_url(self) -> str | None:
+        """Owning organization's logo, for the member feed's org stepper."""
+        return self.host.logo_url if self.host else None
 
     images = relationship(
         "EventImage",

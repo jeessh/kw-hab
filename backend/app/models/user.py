@@ -21,12 +21,12 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    first_name: Mapped[str] = mapped_column(String)
-    last_name: Mapped[str] = mapped_column(String)
-    username: Mapped[str] = mapped_column(String, index=True)  # firstname_lastname
-    password_hash: Mapped[str] = mapped_column(String)
+    first_name: Mapped[str] = mapped_column(Text)
+    last_name: Mapped[str] = mapped_column(Text)
+    username: Mapped[str] = mapped_column(Text, index=True)  # firstname_lastname
+    password_hash: Mapped[str] = mapped_column(Text)
     # 'icon' (default) means password is the icon slugs; 'password' means custom.
-    auth_type: Mapped[str] = mapped_column(String, default="icon")
+    auth_type: Mapped[str] = mapped_column(Text, default="icon")
     # ARRAY(Text) not ARRAY(String): the DB columns are text[], and equality
     # filters (see _allocate_unique_icons) bind the literal with the column's
     # type — String binds varchar[], which has no `text[] = varchar[]` operator.

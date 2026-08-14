@@ -62,14 +62,45 @@ export type Event = {
   id: string;
   host_id: string;
   host_name: string;
+  host_logo_url?: string | null;
   title: string;
   description: string;
+  /** Extra details, shown under the description in the detail popup. */
+  notes?: string | null;
   category?: string | null;
+  /** The shape of the program (Class, Drop-in, Outing) — see lib/activities. */
+  activity_type?: string | null;
   location?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
   accessibility_tags: string[];
   is_free: boolean;
+  capacity?: number | null;
+  /** Human-readable id, e.g. 1042. UUIDs are for machines. */
+  event_no?: number;
+  series_id?: string | null;
+  recurrence?: string | null;
+  series_index?: number | null;
+  series_total?: number | null;
+  pricing_model?:
+    | "free"
+    | "donation"
+    | "per_session"
+    | "per_group"
+    | "series"
+    | "custom";
+  price_cents?: number | null;
+  price_group_size?: number | null;
+  price_sessions?: number | null;
+  price_note?: string | null;
+  /** Built server-side from the structured fields, so every surface agrees. */
+  price_label?: string;
+  saved_count?: number;
+  min_age?: number | null;
+  max_age?: number | null;
+  /** Virtual or in person; youth or everyone. Both filter the admin list. */
+  is_virtual?: boolean;
+  is_youth?: boolean;
   requires_signup: boolean;
   /**
    * Where registering happens. Only meaningful when `requires_signup` — a
@@ -127,6 +158,8 @@ export type AdminAccount = {
   name: string;
   email: string;
   is_admin: boolean;
+  /** Organization logo, shown in the member feed's organization stepper. */
+  logo_url?: string | null;
   created_at: string;
   /** Programs this account owns — shown before a removal reassigns them. */
   event_count: number;
@@ -148,18 +181,69 @@ export const createAdmin = (body: {
   email: string;
   password: string;
   is_admin: boolean;
+  logo_url?: string | null;
 }) => api<AdminAccount>("/hosts", { method: "POST", body: JSON.stringify(body) });
 
 export const updateAdmin = (
   id: string,
-  body: { name?: string; is_admin?: boolean; password?: string },
+  body: {
+    name?: string;
+    is_admin?: boolean;
+    password?: string;
+    /** "" clears the logo; omitting leaves it alone. */
+    logo_url?: string;
+  },
 ) =>
   api<AdminAccount>(`/hosts/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
 
+export type HostInvite = {
+  id: string;
+  organization: string;
+  email: string;
+  is_admin: boolean;
+  expires_at: string;
+  expired: boolean;
+};
+
+export const listInvites = () => api<HostInvite[]>("/invites");
+
+/** The token comes back once — it isn't stored in the clear. */
+export const createInvite = (body: {
+  organization: string;
+  email: string;
+  is_admin: boolean;
+}) =>
+  api<{ id: string; token: string; organization: string; email: string }>(
+    "/invites",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+
+export const revokeInvite = (id: string) =>
+  api(`/invites/${id}`, { method: "DELETE" });
+
 export const deleteAdmin = (id: string) =>
   api(`/hosts/${id}`, { method: "DELETE" });
 
 export const listMembers = () => api<MemberAccount[]>("/users");
+
+/** Icons come back once — they're the password and can't be read again. */
+export const createMember = (body: { first_name: string; last_name: string }) =>
+  api<{ id: string; first_name: string; last_name: string; icons: string[] }>(
+    "/users",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+
+export const updateMember = (
+  id: string,
+  body: { first_name?: string; last_name?: string },
+) =>
+  api<MemberAccount>(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteMember = (id: string) =>
+  api(`/users/${id}`, { method: "DELETE" });
