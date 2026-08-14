@@ -48,6 +48,23 @@ import {
   personalizedFeed,
   type FeedFilters,
 } from "@/lib/feed";
+import {
+  bucketsFor,
+  dimensionByKey,
+  type DimensionKey,
+} from "@/lib/dimensions";
+import {
+  AccountChip,
+  SeeEventsBy,
+  ViewToggle,
+  type ViewMode,
+} from "@/components/member/MemberChrome";
+import {
+  BucketStepper,
+  GridView,
+  SaveZone,
+  WideEventCard,
+} from "@/components/member/FeedParts";
 
 const DROP_THRESHOLD = 150; // drag-down px to save
 const SETTINGS_THRESHOLD = 130; // drag-up px to open settings
@@ -130,6 +147,11 @@ export function EventsView({
 
   // panels
   const [a11yOpen, setA11yOpen] = useState(false);
+  // One card at a time, or the grid. The grid is a placeholder layout.
+  const [viewMode, setViewMode] = useState<ViewMode>("carousel");
+  // How the feed is grouped for the stepper — the "See events by" choice.
+  const [dimensionKey, setDimensionKey] = useState<DimensionKey>("org");
+  const [dimOpen, setDimOpen] = useState(false);
 
   const [saveReveal, setSaveReveal] = useState(0);
   const [settingsReveal, setSettingsReveal] = useState(0);
@@ -267,6 +289,21 @@ export function EventsView({
     },
     [feed, i],
   );
+
+  // Buckets of the chosen dimension, in the order they appear in the feed.
+  const dimension = useMemo(
+    () => dimensionByKey(dimensionKey),
+    [dimensionKey],
+  );
+  const buckets = useMemo(
+    () => bucketsFor(feed, dimension),
+    [feed, dimension],
+  );
+  // Which bucket the current card belongs to — what the stepper highlights and
+  // what the label under the dropdown names.
+  const activeBucket = current
+    ? dimension.bucket(current)
+    : { id: "", label: "", color: "#8A8AA0" };
 
   // Distinct topic tags in first-appearance order.
   const tags = useMemo(() => {
@@ -836,36 +873,18 @@ export function EventsView({
         </div>
       )}
 
-      {/* Log out, or the way in for someone who arrived from a shared link. */}
-      {signedIn ? (
-        <button
-          onClick={doLogout}
-          aria-label="Log out"
-          className="absolute right-[4.5rem] top-4 z-50 grid h-12 w-12 place-items-center rounded-full bg-white text-pop shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <path d="M21 12H9" />
-          </svg>
-        </button>
-      ) : (
-        <button
-          onClick={() => router.push("/signup")}
-          className="absolute right-[4.5rem] top-4 z-50 rounded-full bg-white px-5 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-105 focus-visible:scale-105"
-        >
-          Sign in
-        </button>
-      )}
+      {/* View toggle, top left. */}
+      <div className="absolute left-4 top-4 z-50">
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
+      </div>
+
+      {/* Who you are, top right. Signed out it is the way in. */}
+      <div className="absolute right-4 top-4 z-50">
+        <AccountChip
+          name={me ? `${me.first_name} ${me.last_name.charAt(0)}.` : null}
+          onClick={() => (signedIn ? void doLogout() : router.push("/signup"))}
+        />
+      </div>
 
       {/* accessibility settings */}
       <AccessibilityMenu
@@ -903,7 +922,11 @@ export function EventsView({
           pointerEvents: view === "settings" ? "none" : "auto",
         }}
       >
-        {events.length > 0 && (
+        {/* The design has no filter bar on the one-at-a-time view — that view
+            is about looking at one thing. Keeping it on the grid preserves
+            cost/organization filtering rather than quietly dropping a feature
+            the design simply didn't cover. */}
+        {events.length > 0 && viewMode === "grid" && (
           <FilterBar
             filters={filters}
             orgs={orgs}
@@ -933,20 +956,34 @@ export function EventsView({
           </div>
         ) : (
           <>
-            {/* category header */}
-            <p className="text-sm font-medium text-muted">Category:</p>
-            <h1 className="font-display text-4xl font-extrabold text-ink">
-              {current.category || FALLBACK_CATEGORY}
-            </h1>
+            {/* How the feed is grouped, and which group the current card is in */}
+            <SeeEventsBy
+              dimension={dimension}
+              open={dimOpen}
+              onOpenChange={setDimOpen}
+              onSelect={(key) => {
+                setDimensionKey(key);
+                setI(0);
+                setSrMessage(
+                  `Showing events by ${dimensionByKey(key).heading}.`,
+                );
+              }}
+            />
 
-            {/* tag stepper */}
-            <TagStepper
-              tags={tags}
-              activeTag={current.category || FALLBACK_CATEGORY}
+            <p className="mt-3 font-display text-xl font-semibold text-ink">
+              {activeBucket.label}
+            </p>
+
+            <BucketStepper
+              buckets={buckets}
+              activeId={activeBucket.id}
               onJump={setI}
             />
 
-            {/* carousel */}
+            {viewMode === "grid" ? (
+              <GridView events={feed} saved={saved} />
+            ) : (
+            /* carousel */
             <div className="relative flex w-full flex-1 items-center justify-center">
               <SideZone
                 side="left"
@@ -978,10 +1015,9 @@ export function EventsView({
                 style={{ x: peekX }}
                 className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
               >
-                {[-2, -1, 1, 2].map((off) => (
-                  <NeighborCard key={off} event={slotEvent(off)} offset={off} />
-                ))}
-
+                {/* The design shows one program at a time with nothing behind
+                    it. The neighbour preview cards are gone; slotEvent still
+                    exists for the voice/head handlers that look ahead. */}
                 <motion.div
                   ref={cardWrapRef}
                   style={{
@@ -991,7 +1027,7 @@ export function EventsView({
                     opacity: cardOpacity,
                     zIndex: 30,
                   }}
-                  className="pointer-events-auto relative aspect-[16/9] w-full max-w-[760px]"
+                  className="pointer-events-auto relative aspect-[2.7/1] w-full max-w-[880px]"
                 >
                 {/* Focused card slides in from the travel direction on next/back.
                     Enter-only (keyed by id) so it won't fight the drag/fly transforms. */}
@@ -1039,7 +1075,7 @@ export function EventsView({
                   onPointerCancel={cancelSaveHold}
                   className="absolute inset-0 cursor-grab overflow-hidden rounded-[28px] bg-card shadow-card active:cursor-grabbing"
                 >
-                  <EventCard event={current} saved={alreadySaved} />
+                  <WideEventCard event={current} saved={alreadySaved} />
                   <HoldBadge progress={holdProgress} />
                   <AnimatePresence>
                     {confirming && <ConfirmSweep />}
@@ -1049,32 +1085,21 @@ export function EventsView({
               </motion.div>
               </motion.div>
             </div>
+            )}
           </>
         )}
 
-        {/* drop zone: drag + hold-to-save target */}
-        <DropZone
-          ref={dropRef}
-          active={saveReveal > 0 || dropPulse}
-          onSave={saveFromButton}
-        />
+        {/* Drop target for drag + hold-to-save, and the saved count. */}
+        {viewMode === "carousel" && (
+          <SaveZone
+            ref={dropRef}
+            active={saveReveal > 0 || dropPulse}
+            count={saved.size}
+            onSave={saveFromButton}
+            onOpen={openSettings}
+          />
+        )}
       </div>
-
-      {/* saved events (hidden while the panel is open so it can't float on top) */}
-      {view !== "settings" && (
-        <button
-          onClick={openSettings}
-          className="absolute bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-xl border-2 border-edge bg-white px-4 py-3 font-semibold text-ink shadow-card transition-transform hover:scale-[1.02]"
-        >
-          Saved events
-          <BookmarkIcon />
-          {saved.size > 0 && (
-            <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1 text-sm text-white">
-              {saved.size}
-            </span>
-          )}
-        </button>
-      )}
     </motion.main>
   );
 }
@@ -1426,7 +1451,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   onSignIn: () => void;
 }) {
   return (
-    <div className="absolute right-4 top-4 z-50">
+    // Sits under the view toggle, top left, as in the design.
+    <div className="absolute left-4 top-[4.75rem] z-50">
       {open && (
         <button
           aria-hidden
@@ -1440,9 +1466,18 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Your settings: interests and accessibility"
-        className="relative grid h-12 w-12 place-items-center rounded-full bg-white text-accent shadow-card transition-transform hover:scale-105"
+        className="relative inline-flex items-center gap-1 rounded-full py-1 pl-1 pr-2 text-ink transition-transform hover:scale-105"
       >
         <AccessibilityIcon />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
         {listening && (
           <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-attend text-[10px] text-white shadow">
             🎤
@@ -1453,7 +1488,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 max-h-[80vh] w-80 overflow-y-auto rounded-2xl bg-white p-4 shadow-lift"
+          className="absolute left-0 mt-2 max-h-[80vh] w-80 overflow-y-auto rounded-2xl bg-white p-4 shadow-lift"
         >
           <h2 className="font-display text-lg font-bold text-ink">
             What you like
