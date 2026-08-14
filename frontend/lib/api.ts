@@ -75,6 +75,12 @@ export type Event = {
   ends_at?: string | null;
   accessibility_tags: string[];
   is_free: boolean;
+  capacity?: number | null;
+  saved_count?: number;
+  min_age?: number | null;
+  max_age?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
   /** Virtual or in person; youth or everyone. Both filter the admin list. */
   is_virtual?: boolean;
   is_youth?: boolean;
@@ -175,6 +181,31 @@ export const updateAdmin = (
     method: "PATCH",
     body: JSON.stringify(body),
   });
+
+export type HostInvite = {
+  id: string;
+  organization: string;
+  email: string;
+  is_admin: boolean;
+  expires_at: string;
+  expired: boolean;
+};
+
+export const listInvites = () => api<HostInvite[]>("/invites");
+
+/** The token comes back once — it isn't stored in the clear. */
+export const createInvite = (body: {
+  organization: string;
+  email: string;
+  is_admin: boolean;
+}) =>
+  api<{ id: string; token: string; organization: string; email: string }>(
+    "/invites",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+
+export const revokeInvite = (id: string) =>
+  api(`/invites/${id}`, { method: "DELETE" });
 
 export const deleteAdmin = (id: string) =>
   api(`/hosts/${id}`, { method: "DELETE" });

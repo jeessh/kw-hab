@@ -94,7 +94,12 @@ _REQUIRED_FIELDS = frozenset(
 
 # Eager loads for EventOut serialization (host_name + images); without these
 # each serialized row lazy-loads per-relation (N+1 through pgbouncer).
-_EVENT_OUT_OPTIONS = (joinedload(Event.host), selectinload(Event.images))
+_EVENT_OUT_OPTIONS = (
+    joinedload(Event.host),
+    selectinload(Event.images),
+    # Powers EventOut.saved_count without a query per row.
+    selectinload(Event.attendees),
+)
 
 
 @router.get("", response_model=list[EventOut])

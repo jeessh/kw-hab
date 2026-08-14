@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -39,6 +49,16 @@ class Event(Base):
         Text, nullable=True, index=True
     )
     location: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Coordinates for proximity sorting. Null means the address was never
+    # geocoded, and such a program simply doesn't take part in a distance sort
+    # rather than being hidden by one.
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Null = no limit, which is not the same as zero.
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Open-ended on either side: min 55 with no max reads as "55 and up".
+    min_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -104,6 +124,15 @@ class Event(Base):
     def host_name(self) -> str:
         """Owning organization's display name, surfaced on EventOut for dashboards."""
         return self.host.name if self.host else ""
+
+    @property
+    def saved_count(self) -> int:
+        """How many members currently have it saved.
+
+        Counted off the eager-loaded relationship rather than a per-row query;
+        `_EVENT_OUT_OPTIONS` loads attendees for exactly this.
+        """
+        return sum(1 for a in self.attendees if a.status == "saved")
 
     @property
     def host_logo_url(self) -> str | None:

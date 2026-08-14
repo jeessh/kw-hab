@@ -48,6 +48,11 @@ class EventBase(BaseModel):
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    capacity: int | None = None
+    min_age: int | None = None
+    max_age: int | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     accessibility_tags: list[str] = []
@@ -78,6 +83,11 @@ class EventUpdate(BaseModel):
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    capacity: int | None = None
+    min_age: int | None = None
+    max_age: int | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     accessibility_tags: list[str] | None = None
@@ -97,5 +107,7 @@ class EventOut(EventBase):
     host_id: uuid.UUID
     host_name: str = ""
     host_logo_url: str | None = None
+    # How many have saved it, so the card can say "full" without a second call.
+    saved_count: int = 0
     images: list[EventImageOut] = []
     created_at: datetime

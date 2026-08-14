@@ -15,6 +15,8 @@ export type DimensionKey =
   | "registration"
   | "eventType"
   | "activityType"
+  | "age"
+  | "distance"
   | "all";
 
 export type Dimension = {
@@ -122,6 +124,35 @@ export const DIMENSIONS: Dimension[] = [
     },
   },
   {
+    key: "age",
+    label: "Age",
+    heading: "Age",
+    emoji: "🎂",
+    // Open-ended on either side: min 55 with no max reads as "55 and up".
+    bucket: (e) => {
+      if (e.min_age == null && e.max_age == null)
+        return { id: "any", label: "All ages", color: "#8A8AA0" };
+      if (e.max_age != null && e.max_age <= 17)
+        return { id: "youth", label: "Under 18", color: "#F59E0B" };
+      if (e.min_age != null && e.min_age >= 55)
+        return { id: "older", label: "55 and up", color: "#9B5BD6" };
+      return { id: "adults", label: "Adults", color: "#3B82F6" };
+    },
+  },
+  {
+    key: "distance",
+    label: "Distance",
+    heading: "Distance",
+    emoji: "📍",
+    // Needs both a member location and coordinates on the program, so until
+    // addresses are geocoded everything lands in one honest bucket rather than
+    // a made-up ordering.
+    bucket: (e) =>
+      e.latitude != null && e.longitude != null
+        ? { id: "mapped", label: "On the map", color: "#2FA36B" }
+        : { id: "unmapped", label: "Address not mapped yet", color: "#8A8AA0" },
+  },
+  {
     key: "all",
     label: "All Events",
     heading: "All Events",
@@ -150,4 +181,19 @@ export function bucketsFor(events: Event[], dimension: Dimension): Bucket[] {
     if (!seen.has(b.id)) seen.set(b.id, { ...b, index });
   });
   return [...seen.values()];
+}
+
+/** Kilometres between two points. Enough for a city; no PostGIS required. */
+export function distanceKm(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number },
+): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }

@@ -36,3 +36,25 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+
+/* Printing an event prints the event. Without this, window.print() rendered
+   the console around it — filters, nav, buttons — and the thing somebody
+   actually wanted on paper competed with the furniture. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-target,
+  .print-target * {
+    visibility: visible;
+  }
+  .print-target {
+    position: absolute;
+    inset: 0;
+    padding: 24px;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

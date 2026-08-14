@@ -765,6 +765,23 @@ export function EventsView({
     view === "settings" || a11yOpen,
   );
 
+  // Say which program is in focus. Arrowing through the whole feed used to be
+  // silent for a screen reader: the card is a div, not a live region, so
+  // nothing announced that anything had changed.
+  useEffect(() => {
+    if (!current || view !== "events" || viewMode !== "carousel") return;
+    const when = current.starts_at
+      ? new Date(current.starts_at).toLocaleDateString(undefined, {
+          month: "long",
+          day: "numeric",
+        })
+      : "date to be announced";
+    setSrMessage(
+      `${current.title}. ${when}. ${current.location ?? ""}. ${i + 1} of ${feed.length}.`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, view, viewMode]);
+
   // ---- text-to-speech: read the current event when it changes ----
   useEffect(() => {
     // Nothing to read in the grid: there is no "current card" on screen, so
@@ -1246,7 +1263,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
       <button
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-label="Your settings: interests and accessibility"
         className="relative inline-flex items-center gap-1 rounded-full py-1 pl-1 pr-2 text-ink transition-transform hover:scale-105"
       >
@@ -1269,7 +1286,11 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
 
       {open && (
         <div
-          role="menu"
+          // Not role="menu": this holds headings, paragraphs and switches, none
+          // of which are menuitems. Screen readers entered application mode and
+          // then found nothing to navigate.
+          role="dialog"
+          aria-label="Your settings"
           className="absolute left-0 mt-2 max-h-[80vh] w-80 overflow-y-auto rounded-2xl bg-white p-4 shadow-lift"
         >
           <h2 className="font-display text-lg font-bold text-ink">

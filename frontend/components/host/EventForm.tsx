@@ -18,6 +18,9 @@ export type EventFormValues = {
   coverImageUrl: string;
   category: string;
   activityType: string;
+  capacity: string;
+  minAge: string;
+  maxAge: string;
   isFree: boolean;
   requiresSignup: boolean;
   isVirtual: boolean;
@@ -35,6 +38,9 @@ export const EMPTY_FORM: EventFormValues = {
   coverImageUrl: "",
   category: "",
   activityType: "",
+  capacity: "",
+  minAge: "",
+  maxAge: "",
   isFree: true,
   requiresSignup: false,
   isVirtual: false,
@@ -55,6 +61,9 @@ export function valuesFromEvent(event: Event): EventFormValues {
     coverImageUrl: event.cover_image_url ?? "",
     category: event.category ?? "",
     activityType: event.activity_type ?? "",
+    capacity: event.capacity != null ? String(event.capacity) : "",
+    minAge: event.min_age != null ? String(event.min_age) : "",
+    maxAge: event.max_age != null ? String(event.max_age) : "",
     isFree: event.is_free,
     requiresSignup: event.requires_signup,
     isVirtual: event.is_virtual ?? false,
@@ -86,6 +95,10 @@ export function payloadFrom(v: EventFormValues) {
     // more than the design asks.
     registration_mode: v.registrationUrl.trim() ? "external" : "internal",
     registration_url: v.registrationUrl.trim() || null,
+    // Blank means "no limit" and "any age", which is not the same as zero.
+    capacity: v.capacity.trim() ? Number(v.capacity) : null,
+    min_age: v.minAge.trim() ? Number(v.minAge) : null,
+    max_age: v.maxAge.trim() ? Number(v.maxAge) : null,
   };
 }
 
@@ -285,6 +298,45 @@ export function EventForm({
             placeholder="What to bring, who to ask for, anything that varies week to week."
           />
         </Labelled>
+
+        <div className="flex flex-wrap gap-4">
+          <div className="min-w-[180px] flex-1">
+            <Labelled label="Spaces (leave blank for no limit)">
+              <input
+                type="number"
+                min={1}
+                value={values.capacity}
+                onChange={(e) => set("capacity", e.target.value)}
+                className={fieldClass}
+                placeholder="20"
+              />
+            </Labelled>
+          </div>
+          <div className="min-w-[130px]">
+            <Labelled label="Youngest age">
+              <input
+                type="number"
+                min={0}
+                value={values.minAge}
+                onChange={(e) => set("minAge", e.target.value)}
+                className={fieldClass}
+                placeholder="Any"
+              />
+            </Labelled>
+          </div>
+          <div className="min-w-[130px]">
+            <Labelled label="Oldest age">
+              <input
+                type="number"
+                min={0}
+                value={values.maxAge}
+                onChange={(e) => set("maxAge", e.target.value)}
+                className={fieldClass}
+                placeholder="Any"
+              />
+            </Labelled>
+          </div>
+        </div>
 
         <Labelled label="Posting link">
           <input

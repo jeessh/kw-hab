@@ -15,6 +15,9 @@ export type HostFilters = {
   eventType: string[]; // "virtual" | "inperson" | "youth"
   activity: string[];
   category: string[];
+  /** "open" | "full" — capacity against how many have saved it. */
+  space: string[];
+  age: string[];
 };
 
 export const NO_HOST_FILTERS: HostFilters = {
@@ -24,6 +27,8 @@ export const NO_HOST_FILTERS: HostFilters = {
   eventType: [],
   activity: [],
   category: [],
+  space: [],
+  age: [],
 };
 
 export function applyHostFilters(
@@ -56,6 +61,21 @@ export function applyHostFilters(
       return false;
     if (f.category.length && !f.category.includes(ev.category ?? ""))
       return false;
+    if (f.space.length) {
+      // No capacity set means no limit, so it can never be full.
+      const full =
+        ev.capacity != null && (ev.saved_count ?? 0) >= ev.capacity;
+      if (!f.space.includes(full ? "full" : "open")) return false;
+    }
+    if (f.age.length) {
+      const key =
+        ev.min_age == null && ev.max_age == null
+          ? "any"
+          : ev.max_age != null && ev.max_age <= 17
+            ? "youth"
+            : "adults";
+      if (!f.age.includes(key)) return false;
+    }
     if (q) {
       const hay = [ev.title, ev.description, ev.location, ev.host_name]
         .filter(Boolean)
@@ -75,6 +95,8 @@ const GROUPS: Group[] = [
   { key: "registration", label: "Registration Type", emoji: "📋" },
   { key: "eventType", label: "Event Type", emoji: "🗂️" },
   { key: "activity", label: "Activity Type", emoji: "🎉" },
+  { key: "space", label: "Spaces Left", emoji: "🪑" },
+  { key: "age", label: "Age", emoji: "🎂" },
 ];
 
 export const FilterPanel = memo(function FilterPanel({
@@ -110,6 +132,17 @@ export const FilterPanel = memo(function FilterPanel({
         ];
       case "activity":
         return CATEGORIES.map((c) => ({ value: c.label, label: c.label }));
+      case "space":
+        return [
+          { value: "open", label: "Spaces left" },
+          { value: "full", label: "Full" },
+        ];
+      case "age":
+        return [
+          { value: "any", label: "All ages" },
+          { value: "youth", label: "Under 18" },
+          { value: "adults", label: "Adults" },
+        ];
       default:
         return CATEGORIES.map((c) => ({ value: c.label, label: c.label }));
     }
@@ -220,7 +253,10 @@ export const PostedEventCard = memo(function PostedEventCard({
   onDelete: (event: Event) => void;
 }) {
   return (
-    <article className="rounded-2xl border border-[#C9C7D2] bg-white p-5">
+    <article
+      id={`event-${event.id}`}
+      className="rounded-2xl border border-[#C9C7D2] bg-white p-5"
+    >
       <div className="flex gap-5">
         <button
           onClick={() => onEdit(event)}
@@ -250,6 +286,14 @@ export const PostedEventCard = memo(function PostedEventCard({
               </Pill>
               {event.is_virtual && <Pill tone="blue">Virtual</Pill>}
               {event.is_youth && <Pill tone="amber">Youth</Pill>}
+              {event.capacity != null &&
+                ((event.saved_count ?? 0) >= event.capacity ? (
+                  <Pill tone="pink">Full</Pill>
+                ) : (
+                  <Pill tone="blue">
+                    {event.capacity - (event.saved_count ?? 0)} left
+                  </Pill>
+                ))}
             </div>
           </div>
 
@@ -296,8 +340,17 @@ export const PostedEventCard = memo(function PostedEventCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-4">
-        <IconButton label={`Print ${event.title}`} onClick={() => window.print()}>
+      <div className="mt-3 flex items-center gap-4 no-print">
+        <IconButton
+          label={`Print ${event.title}`}
+          onClick={() => {
+            // Mark just this card, print, then put the page back.
+            const el = document.getElementById(`event-${event.id}`);
+            el?.classList.add("print-target");
+            window.print();
+            el?.classList.remove("print-target");
+          }}
+        >
           <PrinterIcon />
         </IconButton>
         <IconButton label={`Share ${event.title}`} onClick={() => onShare(event)}>
