@@ -4,6 +4,7 @@ import { forwardRef, memo } from "react";
 import Link from "next/link";
 import type { Event } from "@/lib/api";
 import type { Bucket } from "@/lib/dimensions";
+import { repeatLabel } from "@/lib/recurrence";
 
 // Design tokens for the redesigned member surface.
 export const SKY = "#75DDF6"; // See more
@@ -108,6 +109,7 @@ export const WideEventCard = memo(function WideEventCard({
   event: Event;
   saved: boolean;
 }) {
+  const repeats = repeatLabel(event.recurrence);
   return (
     <div className="flex h-full gap-6 p-5">
       <div className="relative aspect-square h-full max-h-[300px] shrink-0 overflow-hidden rounded-2xl bg-edge">
@@ -136,6 +138,11 @@ export const WideEventCard = memo(function WideEventCard({
                 day: "numeric",
                 year: "numeric",
               })}
+              {/* The feed shows a repeating program once, at its next date, so
+                  the card has to say the date isn't the whole story. */}
+              {repeats && (
+                <span className="text-muted">{` · ${repeats}`}</span>
+              )}
             </span>
           )}
           {event.location && (

@@ -43,6 +43,34 @@ export function matchScore(event: Event, taste: Taste): number {
  * ties here fall back to that original index so the feed never reshuffles
  * between renders.
  */
+/**
+ * One card per program, rather than one per date.
+ *
+ * A weekly program is stored as a dated row per occurrence, because capacity,
+ * saves and reminders each attach to a date and a virtual occurrence has
+ * nothing to attach to. Browsing one at a time, that turned one agency's eight
+ * programs into seventy near-identical cards — the same title twelve times over
+ * before the feed moved on.
+ *
+ * Each series collapses to its soonest upcoming date, which is the one a member
+ * can actually act on. The rest aren't dropped from the product: the card says
+ * how often it repeats, and saving a series program still enrols them across
+ * the run the same way it always did.
+ *
+ * Relies on a series' earliest date arriving first, which the server's
+ * (starts_at, created_at, id) order gives and personalizedFeed preserves —
+ * occurrences of one series all score the same, so nothing reorders them.
+ */
+export function oneCardPerProgram(events: Event[]): Event[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (!event.series_id) return true;
+    if (seen.has(event.series_id)) return false;
+    seen.add(event.series_id);
+    return true;
+  });
+}
+
 export function personalizedFeed(events: Event[], taste: Taste): Event[] {
   return events
     .map((event, index) => ({ event, index, score: matchScore(event, taste) }))

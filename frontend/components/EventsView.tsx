@@ -37,7 +37,7 @@ import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { SavedEvents } from "@/components/SavedEvents";
 import { CATEGORIES } from "@/lib/categories";
-import { personalizedFeed } from "@/lib/feed";
+import { oneCardPerProgram, personalizedFeed } from "@/lib/feed";
 import {
   bucketsFor,
   dimensionByKey,
@@ -253,12 +253,13 @@ export function EventsView({
     [dimensionKey],
   );
 
-  // The order Next and Back walk: each stepper bucket's programs together, in
-  // the order the stepper shows them. The grid keeps `scoredFeed` — it lays
-  // programs out under day headings, so it has its own reading order and a
+  // The order Next and Back walk: one card per program rather than one per
+  // date, then each stepper bucket's programs together in the order the stepper
+  // shows them. The grid keeps `scoredFeed` — it lays programs out under day
+  // headings, where a repeating program belongs on each day it runs, and a
   // route through the buckets would only scramble the days.
   const feed = useMemo(
-    () => groupByBucket(scoredFeed, dimension),
+    () => groupByBucket(oneCardPerProgram(scoredFeed), dimension),
     [scoredFeed, dimension],
   );
 
