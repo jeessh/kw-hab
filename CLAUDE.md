@@ -130,21 +130,26 @@ Two invariants worth knowing before touching `app/api/routes/hosts.py`:
   rights, so your own survive.
 
 ## Status
-DB live + seeded. The Vercel project (`kw-hab`) **builds and deploys green** —
-the `services` schema works, and production deployments exist for `master`.
+**https://kw-hab.vercel.app is live and public.** Both of the blockers this
+section used to list are fixed, and the fixes were dashboard settings, so
+nothing in the repo records them — verify against the deployment, not the code:
 
-Two things still block anyone outside the Vercel account from using it:
+- SSO protection is scoped to **preview** deployments only, so production is
+  reachable without a Vercel login. Preview URLs still 302 to the login wall;
+  that is deliberate, don't share one with the agencies.
+- `DATABASE_URL` on Vercel uses the **:6543 transaction** pooler, so the
+  serverless backend reaches Supabase. `/api/health`, `/api/events` and the
+  server-rendered `/events/{id}` all answer 200 against real data.
 
-1. **Vercel Authentication (SSO) is on** for every deployment except custom
-   domains, so all `*.vercel.app` URLs return a 302 to a login wall. Either
-   attach a custom domain or turn protection off for production.
-2. **The deployed backend can't reach the database.** Runtime logs show
-   `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` against
-   `aws-1-us-west-2.pooler.supabase.com:5432`. Port 5432 is the **session**
-   pooler — serverless has to use the **:6543 transaction** pooler. Vercel's
-   `DATABASE_URL` looks like a copy of the local one; it needs the :6543 form.
+Re-check with `curl https://kw-hab.vercel.app/api/health` before assuming
+either has regressed; a stale "it only runs locally" belief here has already
+cost one wrong diagnosis.
 
-Neither is a code change; both are dashboard settings. Until they're fixed the
-deployment is effectively local-only, so **treat "runs on my machine" as the
-current state of truth** and re-verify `/api/health` + a real signup against the
-deployed URL once they're sorted.
+**Data.** The 37 real programs from `KWHab_Event_Test_Data.xlsx` are imported as
+273 dated occurrences across the six agencies (Extend-A-Family, Karis Disability
+Services, WRFN, Independent Living, Developmental Services Ontario, KW
+Habilitation). The earlier seeded demo programming is archived, not deleted —
+it used four categories (`Advice`, `Arts`, `Hangout`, `Food`) that predate the
+real taxonomy and so could never match anyone's interests. Every live event now
+carries a category from `CATEGORIES`; keep it that way, and don't un-archive the
+demo rows without re-filing their categories first.
