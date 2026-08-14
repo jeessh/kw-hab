@@ -1,5 +1,4 @@
 import type { Event } from "@/lib/api";
-import { FALLBACK_ACTIVITY } from "@/lib/activities";
 import { FALLBACK_CATEGORY, categoryStyle } from "@/lib/categories";
 
 /**
@@ -101,9 +100,12 @@ export const DIMENSIONS: Dimension[] = [
     label: "Event Type",
     heading: "Event Type",
     emoji: "🗂️",
+    // Virtual, in person, or for youth — the same three the admin filters on.
     bucket: (e) => {
-      const label = e.category || FALLBACK_CATEGORY;
-      return { id: label, label, color: categoryStyle(label).color };
+      if (e.is_youth) return { id: "youth", label: "Youth", color: "#F59E0B" };
+      return e.is_virtual
+        ? { id: "virtual", label: "Virtual", color: "#3B82F6" }
+        : { id: "inperson", label: "In person", color: "#2FA36B" };
     },
   },
   {
@@ -111,9 +113,12 @@ export const DIMENSIONS: Dimension[] = [
     label: "Activity Type",
     heading: "Activity Type",
     emoji: "🎉",
+    // The topic list. "Activity Type" is what the design calls it, and it is
+    // what members pick as interests, so the feed groups on the same field the
+    // matching runs on.
     bucket: (e) => {
-      const label = e.activity_type || FALLBACK_ACTIVITY;
-      return { id: label, label, color: hashColor(label) };
+      const label = e.category || FALLBACK_CATEGORY;
+      return { id: label, label, color: categoryStyle(label).color };
     },
   },
   {

@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { Event } from "@/lib/api";
 import { ImageDrop } from "@/components/ImageDrop";
 import { CATEGORIES } from "@/lib/categories";
-import { ACTIVITY_TYPES } from "@/lib/activities";
 
 export const CYAN = "#35CDEE";
 
@@ -99,7 +98,7 @@ export function missingRequired(v: EventFormValues): string[] {
   if (!v.location.trim()) missing.push("location");
   if (!v.description.trim()) missing.push("description");
   if (!v.coverImageUrl) missing.push("image");
-  if (!v.category) missing.push("topic");
+  if (!v.category) missing.push("activity type");
   return missing;
 }
 
@@ -305,7 +304,7 @@ export function EventForm({
           <span aria-hidden className="text-lg text-[#E8318A]">
             *
           </span>
-          What is it about?
+          Activity Type
         </legend>
         <p className="mt-1 text-base text-muted">
           Members pick these same topics as interests — this is what puts your
@@ -328,39 +327,6 @@ export function EventForm({
               }
             >
               <span aria-hidden>{c.emoji}</span> {c.label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset className="mt-6">
-        <legend className="font-display text-xl font-bold text-ink">
-          What kind of thing is it?
-        </legend>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {ACTIVITY_TYPES.map((a) => (
-            <button
-              key={a.label}
-              type="button"
-              onClick={() =>
-                set(
-                  "activityType",
-                  values.activityType === a.label ? "" : a.label,
-                )
-              }
-              aria-pressed={values.activityType === a.label}
-              className={`rounded-full border px-4 py-2 text-base transition-colors ${
-                values.activityType === a.label
-                  ? "border-transparent text-ink"
-                  : "border-[#B9B7C4] text-ink hover:bg-slate-50"
-              }`}
-              style={
-                values.activityType === a.label
-                  ? { background: CYAN }
-                  : undefined
-              }
-            >
-              <span aria-hidden>{a.emoji}</span> {a.label}
             </button>
           ))}
         </div>

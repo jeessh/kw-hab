@@ -3,7 +3,6 @@
 import { memo, useMemo, useState } from "react";
 import type { Event } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
-import { ACTIVITY_TYPES } from "@/lib/activities";
 
 export const CYAN = "#35CDEE";
 
@@ -52,7 +51,8 @@ export function applyHostFilters(
       ];
       if (!f.eventType.some((k) => keys.includes(k))) return false;
     }
-    if (f.activity.length && !f.activity.includes(ev.activity_type ?? ""))
+    // "Activity Type" is the topic list — Cooking, Sports, Arts.
+    if (f.activity.length && !f.activity.includes(ev.category ?? ""))
       return false;
     if (f.category.length && !f.category.includes(ev.category ?? ""))
       return false;
@@ -109,7 +109,7 @@ export const FilterPanel = memo(function FilterPanel({
           { value: "youth", label: "Youth" },
         ];
       case "activity":
-        return ACTIVITY_TYPES.map((a) => ({ value: a.label, label: a.label }));
+        return CATEGORIES.map((c) => ({ value: c.label, label: c.label }));
       default:
         return CATEGORIES.map((c) => ({ value: c.label, label: c.label }));
     }
