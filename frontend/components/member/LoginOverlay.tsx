@@ -7,7 +7,10 @@ import { ALL_ICONS, emojiFor } from "@/lib/icons";
 
 export const CYAN = "#35CDEE";
 
-const PICK_COUNT = 3;
+// One icon, not three — see ICON_POOL in core/icons.py for the trade this
+// makes. The overlay still handles it as an ordered list so nothing here has to
+// change if that decision is revisited.
+const PICK_COUNT = 1;
 
 /**
  * Signing in without leaving the feed.
@@ -76,7 +79,7 @@ export function LoginOverlay({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 400
-          ? "Pick 3 different icons."
+          ? "Choose your icon."
           : "Something went wrong. Please try again.",
       );
       setBusy(false);
@@ -132,18 +135,15 @@ export function LoginOverlay({
         ) : (
           <>
             <p className="mt-4 text-xl text-ink">Choose your personal icon.</p>
-            {/* Twelve tiles visible, as the design has it. The pool behind
-                them stays whole: the icon set IS the password, and 37 members
-                already hold keys drawn from all of it — trimming it to fit the
-                frame would lock most of them out and cut the keyspace from
-                ~59,000 to 1,320. Exactly two rows, then it scrolls. */}
+            {/* Twelve tiles, which is now the whole pool — two rows of six,
+                nothing hidden and nothing to scroll for. */}
             {/* The padding is the order badge's room to hang over a tile's
                 corner. This is a scroll container, and a box that scrolls in
                 one axis clips the other too — so the badge was being sliced off
                 along the top row and the right-hand column, which is where the
                 first icon someone picks tends to be. The negative margin keeps
                 the tiles where they were. */}
-            <div className="mt-6 -mx-2 grid max-h-[164px] grid-cols-6 gap-3 overflow-y-auto px-2 pt-2">
+            <div className="mt-6 -mx-2 grid grid-cols-6 gap-3 px-2 pt-2">
               {ALL_ICONS.map((slug) => {
                 const order = picked.indexOf(slug);
                 const isPicked = order !== -1;

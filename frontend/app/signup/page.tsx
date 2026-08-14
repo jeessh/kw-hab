@@ -10,7 +10,8 @@ import { CATEGORIES } from "@/lib/categories";
 
 type Step = "name" | "interests" | "icons" | "confirm" | "transition";
 
-const PICK_COUNT = 3;
+// One icon — see ICON_POOL in core/icons.py for the trade this makes.
+const PICK_COUNT = 1;
 
 /**
  * A same-origin path from `?next=`, or the feed.
@@ -73,7 +74,7 @@ function SignupFlow() {
     setConflict(false);
     setPicked((prev) => {
       if (prev.includes(slug)) return prev.filter((s) => s !== slug);
-      if (prev.length >= PICK_COUNT) return prev; // already have 3
+      if (prev.length >= PICK_COUNT) return prev; // already at the limit
       return [...prev, slug];
     });
   }
@@ -269,10 +270,10 @@ function SignupFlow() {
             className="w-full max-w-3xl text-center"
           >
             <h1 className="font-display text-4xl font-extrabold text-ink">
-              Choose your 3 icons
+              Choose your icon
             </h1>
             <p className="mt-2 text-lg text-muted">
-              Pick 3 in an order you&apos;ll remember. The order is how you sign in.
+              Pick one you&apos;ll remember. It&apos;s how you sign in.
             </p>
 
             {/* chosen sequence so far */}
@@ -300,11 +301,11 @@ function SignupFlow() {
 
             {/* screen-reader progress */}
             <p className="sr-only" role="status" aria-live="polite">
-              {picked.length} of {PICK_COUNT} icons chosen
+              {picked.length} of {PICK_COUNT} chosen
               {picked.length ? `: ${picked.join(", ")}` : ""}
             </p>
 
-            {/* the table of 40 icons */}
+            {/* the icon pool */}
             <div className="mt-8 grid grid-cols-5 gap-3 sm:grid-cols-8">
               {ALL_ICONS.map((slug) => {
                 const order = picked.indexOf(slug);
@@ -321,7 +322,7 @@ function SignupFlow() {
                       isPicked
                         ? `${slug}, chosen as icon ${order + 1}. Activate to remove.`
                         : full
-                          ? `${slug}. You already have 3 icons; remove one to change.`
+                          ? `${slug}. You already chose an icon; remove it to change.`
                           : `Choose ${slug}`
                     }
                     className={`relative grid aspect-square place-items-center rounded-2xl border-2 bg-white text-3xl shadow-card transition-all sm:text-4xl ${
