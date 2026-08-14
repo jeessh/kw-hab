@@ -738,8 +738,19 @@ export function EventsView({
     } catch {
       /* clear the session client-side regardless */
     }
-    router.replace("/");
-  }, [router]);
+    // Clear it here rather than leaning on the navigation to remount us.
+    // This used to `router.replace("/")` from /events, which threw the
+    // component away and rebuilt it signed out. The feed is / now, so that
+    // replace is a no-op: the cookie was gone but the chip still showed the
+    // member's name and their saved programs were still on screen — signed out
+    // everywhere except the part they were looking at.
+    setMe(null);
+    setSaved(new Set());
+    setDetailFor(null);
+    setRegisterFor(null);
+    closeSettings();
+    setSrMessage("Signed out.");
+  }, [closeSettings]);
 
   // The four card actions, shared by voice + head-tracking for identical behavior.
   // Voice and head-tracking both drive these. In the grid there is no focused
@@ -975,7 +986,8 @@ export function EventsView({
       <div className="absolute right-4 top-4 z-50">
         <AccountChip
           name={me ? `${me.first_name} ${me.last_name.charAt(0)}.` : null}
-          onClick={() => (signedIn ? void doLogout() : setAuthOpen(true))}
+          onSignIn={() => setAuthOpen(true)}
+          onSignOut={() => void doLogout()}
         />
       </div>
 
@@ -1334,7 +1346,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label="Your settings: interests and accessibility"
-        className="relative inline-flex items-center gap-1 rounded-full py-1 pl-1 pr-2 text-ink transition-transform hover:scale-105"
+        className="relative inline-flex min-h-[44px] items-center gap-1 rounded-full py-1 pl-1 pr-2 text-ink transition-transform hover:scale-105"
       >
         <AccessibilityIcon />
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -1471,21 +1483,30 @@ function MenuToggle({
           {disabled ? disabledHint ?? hint : hint}
         </p>
       </div>
+      {/* The track stays 44×24 — the button around it is 44×44.
+          These three switches turn on the screen reader, voice control and head
+          tracking, so they are the controls the people this app is for are most
+          likely to need and least likely to hit precisely. A 24px-tall target
+          for that is backwards. */}
       <button
         role="switch"
         aria-checked={checked}
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
-          checked ? "bg-accent" : "bg-edge"
-        }`}
+        className="group relative grid h-11 w-11 shrink-0 place-items-center disabled:opacity-40"
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-            checked ? "left-[22px]" : "left-0.5"
+          className={`relative block h-6 w-11 rounded-full transition-colors ${
+            checked ? "bg-accent" : "bg-edge"
           }`}
-        />
+        >
+          <span
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+              checked ? "left-[22px]" : "left-0.5"
+            }`}
+          />
+        </span>
       </button>
     </div>
   );
@@ -1589,10 +1610,30 @@ const SideZone = memo(function SideZone({
       onPointerUp={onUp}
       onPointerCancel={onLeave}
       onClick={disabled ? undefined : onClick}
-      className={`absolute inset-y-6 z-20 flex cursor-pointer items-center ${
+      className={`absolute z-20 flex cursor-pointer items-center ${
         isLeft ? "left-0 justify-start pl-3" : "right-0 justify-end pr-3"
       }`}
-      style={{ width: "calc(50% - 380px)", minWidth: "96px" }}
+      // A forgiving margin around the arrow, not the whole flank.
+      //
+      // This was the full height of the carousel by `calc(50% - 380px)` wide —
+      // 352×295 on a laptop, about 9% of the window on each side — and merely
+      // resting a pointer inside it began a dwell that paged the feed and kept
+      // paging. A mouse user parking the cursor beside the card watched the
+      // programs scroll past on their own. The dwell exists for people who
+      // can't click; head tracking calls next/back directly and never needed
+      // this, so the size was cost without benefit.
+      //
+      // 288 wide is still nearly twice the arrow, so an imprecise press lands.
+      // The 380px constant was also stale: it assumed the old 880px card, and
+      // against the height-led card it left a 50px strip either side that
+      // looked like the zone but answered to nothing.
+      style={{
+        width: "min(288px, calc(50% - 300px))",
+        minWidth: "96px",
+        top: "50%",
+        transform: "translateY(-50%)",
+        height: "min(232px, 100%)",
+      }}
     >
       <div
         className="flex flex-col items-center gap-2 rounded-3xl px-4 py-6 transition-colors"

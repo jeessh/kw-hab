@@ -22,14 +22,14 @@ const PICK_COUNT = 3;
  * hash of a URL that stayed on our origin survive.
  */
 function safeNext(raw: string | null): string {
-  if (!raw) return "/events";
+  if (!raw) return "/";
   try {
     const here = new URL(window.location.href);
     const target = new URL(raw, here.origin);
-    if (target.origin !== here.origin) return "/events";
+    if (target.origin !== here.origin) return "/";
     return `${target.pathname}${target.search}${target.hash}`;
   } catch {
-    return "/events";
+    return "/";
   }
 }
 
