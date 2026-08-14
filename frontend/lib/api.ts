@@ -65,6 +65,8 @@ export type Event = {
   host_logo_url?: string | null;
   title: string;
   description: string;
+  /** Extra details, shown under the description in the detail popup. */
+  notes?: string | null;
   category?: string | null;
   /** The shape of the program (Class, Drop-in, Outing) — see lib/activities. */
   activity_type?: string | null;

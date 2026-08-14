@@ -90,11 +90,14 @@ export const SeeEventsBy = memo(function SeeEventsBy({
   open,
   onOpenChange,
   onSelect,
+  align = "center",
 }: {
   dimension: Dimension;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (key: DimensionKey) => void;
+  /** The grid puts this in the top-left corner rather than centred. */
+  align?: "center" | "left";
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -123,7 +126,12 @@ export const SeeEventsBy = memo(function SeeEventsBy({
   }, [open, onOpenChange]);
 
   return (
-    <div ref={wrapRef} className="relative flex flex-col items-center">
+    <div
+      ref={wrapRef}
+      className={`relative flex flex-col ${
+        align === "left" ? "items-start" : "items-center"
+      }`}
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
         See events by
       </p>
@@ -136,7 +144,9 @@ export const SeeEventsBy = memo(function SeeEventsBy({
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
           aria-haspopup="menu"
-          className="inline-flex items-center gap-3 font-display text-4xl font-extrabold text-ink sm:text-5xl"
+          className={`inline-flex items-center gap-3 font-display font-extrabold text-ink ${
+            align === "left" ? "text-3xl" : "text-4xl sm:text-5xl"
+          }`}
         >
           {dimension.heading}
           <span
@@ -152,7 +162,9 @@ export const SeeEventsBy = memo(function SeeEventsBy({
         <div
           role="menu"
           aria-label="See events by"
-          className="absolute top-full z-50 mt-3 w-[22rem] rounded-2xl border border-edge bg-white p-2 shadow-lift"
+          className={`absolute top-full z-50 mt-3 w-[22rem] rounded-2xl border border-edge bg-white p-2 shadow-lift ${
+            align === "left" ? "left-0" : ""
+          }`}
         >
           {DIMENSIONS.map((d) => {
             const active = d.key === dimension.key;

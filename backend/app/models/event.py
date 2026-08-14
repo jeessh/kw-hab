@@ -24,6 +24,9 @@ class Event(Base):
     )
     title: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
+    # Extra details shown under the description in the detail popup. Kept apart
+    # from description so the standardized pitch every listing has stays short.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     # What kind of thing it is, as distinct from what it is about: category is
     # the topic (Cooking), activity_type is the shape (a class, a drop-in

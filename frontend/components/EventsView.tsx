@@ -50,10 +50,15 @@ import {
   type ViewMode,
 } from "@/components/member/MemberChrome";
 import { LoginOverlay } from "@/components/member/LoginOverlay";
+import { EventDetailModal } from "@/components/member/EventDetailModal";
+import {
+  GridFeed,
+  SavedEventsButton,
+  SearchBox,
+} from "@/components/member/GridFeed";
 import { RegisterPrompt } from "@/components/member/RegisterPrompt";
 import {
   BucketStepper,
-  GridView,
   SaveZone,
   WideEventCard,
 } from "@/components/member/FeedParts";
@@ -136,6 +141,8 @@ export function EventsView({
   // Open with no pending program — someone signing in of their own accord
   // rather than because they tried to save something.
   const [authOpen, setAuthOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [detailFor, setDetailFor] = useState<Event | null>(null);
 
   const [saveReveal, setSaveReveal] = useState(0);
   const [settingsReveal, setSettingsReveal] = useState(0);
@@ -222,14 +229,20 @@ export function EventsView({
   // text-to-speech — which has no bearing on order.
   const interests = me?.interest_categories;
   const accessPrefs = me?.accessibility_prefs;
-  const feed = useMemo(
-    () =>
-      personalizedFeed(events, {
-        interests: interests ?? [],
-        accessPrefs: accessPrefs ?? [],
-      }),
-    [events, interests, accessPrefs],
-  );
+  const feed = useMemo(() => {
+    // A program that already happened is not a thing anyone can attend, and
+    // the design's "Today / Tomorrow" headings assume it's gone. Undated
+    // programs stay — "date to be announced" is still upcoming.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const upcoming = events.filter(
+      (ev) => !ev.starts_at || new Date(ev.starts_at) >= todayStart,
+    );
+    return personalizedFeed(upcoming, {
+      interests: interests ?? [],
+      accessPrefs: accessPrefs ?? [],
+    });
+  }, [events, interests, accessPrefs]);
 
   // A filter change can shorten the feed out from under the cursor.
   useEffect(() => {
@@ -338,6 +351,40 @@ export function EventsView({
     },
     [toSignIn],
   );
+
+  const unsave = useCallback(async (ev: Event) => {
+    setSaved((prevSaved) => {
+      const next = new Set(prevSaved);
+      next.delete(ev.id);
+      return next;
+    });
+    setSrMessage(`Removed ${ev.title}`);
+    try {
+      await api(`/events/${ev.id}/attend`, { method: "DELETE" });
+    } catch {
+      // Put it back rather than show it gone when it isn't.
+      setSaved((prevSaved) => new Set(prevSaved).add(ev.id));
+      setSrMessage(`Could not remove ${ev.title}.`);
+    }
+  }, []);
+
+  const toggleSave = useCallback(
+    (ev: Event) => {
+      if (savedRef.current.has(ev.id)) void unsave(ev);
+      else void attend(ev);
+    },
+    [attend, unsave],
+  );
+
+  // Counting the click before leaving; losing the count must never cost the
+  // member the link.
+  const openRegistration = useCallback((ev: Event) => {
+    if (!ev.registration_url) return;
+    window.open(ev.registration_url, "_blank", "noopener,noreferrer");
+    void api(`/events/${ev.id}/registration-click`, { method: "POST" }).catch(
+      () => {},
+    );
+  }, []);
 
   const saveCurrent = useCallback(async () => {
     const ev = feed[i];
@@ -903,7 +950,9 @@ export function EventsView({
 
       {/* ---------------- EVENTS ---------------- */}
       <div
-        className="absolute inset-0 flex flex-col items-center px-6 pb-44 pt-8"
+        className={`absolute inset-0 flex flex-col items-center px-6 pt-8 ${
+          viewMode === "grid" ? "pb-8" : "pb-44"
+        }`}
         style={{
           opacity: 1 - settingsReveal,
           pointerEvents: view === "settings" ? "none" : "auto",
@@ -921,32 +970,56 @@ export function EventsView({
           </div>
         ) : (
           <>
-            {/* How the feed is grouped, and which group the current card is in */}
-            <SeeEventsBy
-              dimension={dimension}
-              open={dimOpen}
-              onOpenChange={setDimOpen}
-              onSelect={(key) => {
-                setDimensionKey(key);
-                setI(0);
-                setSrMessage(
-                  `Showing events by ${dimensionByKey(key).heading}.`,
-                );
-              }}
-            />
-
-            <p className="mt-3 font-display text-xl font-semibold text-ink">
-              {activeBucket.label}
-            </p>
-
-            <BucketStepper
-              buckets={buckets}
-              activeId={activeBucket.id}
-              onJump={setI}
-            />
+            {viewMode === "grid" ? (
+              <div className="flex w-full max-w-6xl flex-wrap items-start justify-between gap-4 pb-6">
+                <SeeEventsBy
+                  dimension={dimension}
+                  open={dimOpen}
+                  onOpenChange={setDimOpen}
+                  onSelect={(key) => setDimensionKey(key)}
+                  align="left"
+                />
+                <div className="flex flex-col items-end gap-4">
+                  <SearchBox value={query} onChange={setQuery} />
+                  <SavedEventsButton
+                    count={saved.size}
+                    onClick={openSettings}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <SeeEventsBy
+                  dimension={dimension}
+                  open={dimOpen}
+                  onOpenChange={setDimOpen}
+                  onSelect={(key) => {
+                    setDimensionKey(key);
+                    setI(0);
+                    setSrMessage(
+                      `Showing events by ${dimensionByKey(key).heading}.`,
+                    );
+                  }}
+                />
+                <p className="mt-3 font-display text-xl font-semibold text-ink">
+                  {activeBucket.label}
+                </p>
+                <BucketStepper
+                  buckets={buckets}
+                  activeId={activeBucket.id}
+                  onJump={setI}
+                />
+              </>
+            )}
 
             {viewMode === "grid" ? (
-              <GridView events={feed} saved={saved} />
+              <GridFeed
+                events={feed}
+                saved={saved}
+                query={query}
+                onOpen={setDetailFor}
+                onToggleSave={toggleSave}
+              />
             ) : (
             /* carousel */
             <div className="relative flex w-full flex-1 items-center justify-center">
@@ -1071,6 +1144,19 @@ export function EventsView({
           }}
           onSignedIn={() => void handleSignedIn()}
           onSignUp={() => router.push("/signup")}
+        />
+      )}
+
+      {detailFor && (
+        <EventDetailModal
+          event={detailFor}
+          saved={saved.has(detailFor.id)}
+          onClose={() => setDetailFor(null)}
+          onSave={(ev) => {
+            setDetailFor(null);
+            void attend(ev);
+          }}
+          onOpenRegistration={openRegistration}
         />
       )}
 

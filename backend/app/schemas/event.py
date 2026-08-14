@@ -44,6 +44,7 @@ class EventImageOut(EventImageIn):
 class EventBase(BaseModel):
     title: str
     description: str = ""
+    notes: str | None = None
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
@@ -71,6 +72,7 @@ class EventCreate(EventBase):
 class EventUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    notes: str | None = None
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
