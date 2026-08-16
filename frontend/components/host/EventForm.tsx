@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Event } from "@/lib/api";
 import { ImageDrop } from "@/components/ImageDrop";
+import { checkPostingLink } from "@/lib/postingLink";
 import { CATEGORIES } from "@/lib/categories";
 import {
   PAID_MODELS,
@@ -427,9 +428,35 @@ export function EventForm({
             placeholder="yourorg.ca/register"
           />
         </Labelled>
-        <p className="-mt-2 text-base text-muted">
-          Leave this blank if people sign up here rather than on your own site.
-        </p>
+        {(() => {
+          const hint = checkPostingLink(values.registrationUrl);
+          if (!hint) {
+            return (
+              <p className="-mt-2 text-base text-muted">
+                Leave this blank if people sign up here rather than on your own
+                site.
+              </p>
+            );
+          }
+          // A caution, not a refusal. Some agencies really do have one page,
+          // and blocking that would just get the link left out entirely —
+          // which is worse than a link to the front page.
+          return (
+            <p
+              role="status"
+              className={`-mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-base ${
+                hint.tone === "error"
+                  ? "bg-[#FDECEF] text-[#A3123C]"
+                  : "bg-[#FFF4DC] text-[#7B4B00]"
+              }`}
+            >
+              <span aria-hidden className="mt-px font-bold">
+                {hint.tone === "error" ? "!" : "\u26A0"}
+              </span>
+              <span>{hint.message}</span>
+            </p>
+          );
+        })()}
       </div>
 
       {/* Topic and kind aren't on the mockup, but the member feed groups and
