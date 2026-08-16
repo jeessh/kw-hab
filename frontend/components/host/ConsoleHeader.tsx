@@ -186,7 +186,7 @@ function LogoModal({
         square image works best.
       </p>
       <div className="mt-4">
-        <ImageDrop label="" value={url} onChange={setUrl} />
+        <ImageDrop label="" sizing="logo" value={url} onChange={setUrl} />
       </div>
       {error && (
         <p role="alert" className="mt-3 text-base font-semibold text-red-600">

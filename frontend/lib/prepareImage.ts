@@ -14,10 +14,22 @@
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export const ACCEPTED_LABEL = "JPG, PNG or WebP";
 
-/** Below this on either edge, a photo can't fill a card without going soft. */
-export const MIN_EDGE = 512;
-/** What we suggest, and what oversized images are scaled to fit inside. */
-export const IDEAL_EDGE = 1000;
+/**
+ * How big an image needs to be depends on what it's for.
+ *
+ * A listing photo fills a card several hundred pixels wide, so it needs the
+ * pixels. A logo is drawn into a 56px ring and a 36px header avatar — asking an
+ * agency for a 1000px version of a mark that renders at 56 is asking them to go
+ * and find a file they may not have, to no benefit.
+ */
+export const IMAGE_SIZING = {
+  /** Event covers: the photo is the card. */
+  cover: { minEdge: 512, idealEdge: 1000 },
+  /** Organization logos: recommended 512, and small marks are still usable. */
+  logo: { minEdge: 128, idealEdge: 512 },
+} as const;
+
+export type SizingKey = keyof typeof IMAGE_SIZING;
 /** Re-encode anything bigger than this; the API refuses at 5MB. */
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -46,7 +58,11 @@ function loadBitmap(file: File): Promise<HTMLImageElement> {
  * File untouched when it's already a sensible size — re-encoding a good image
  * only costs it quality.
  */
-export async function prepareImage(file: File): Promise<File> {
+export async function prepareImage(
+  file: File,
+  sizing: SizingKey = "cover",
+): Promise<File> {
+  const { minEdge: MIN_EDGE, idealEdge: IDEAL_EDGE } = IMAGE_SIZING[sizing];
   if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
     throw new ImageRejected(`Please choose a ${ACCEPTED_LABEL} image.`);
   }
