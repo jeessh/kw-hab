@@ -10,13 +10,42 @@ from app.core.security import hash_password
 from app.models.event import Event
 from app.models.host import Host
 from app.models.invite import HostInvite
-from app.schemas.host import HostCreate, HostOut, HostUpdate, HostWithCountsOut
+from app.schemas.host import (
+    HostCreate,
+    HostOut,
+    HostSelfUpdate,
+    HostUpdate,
+    HostWithCountsOut,
+)
 
 router = APIRouter(prefix="/hosts", tags=["hosts"])
 
 
 @router.get("/me", response_model=HostOut)
 def get_me(host: Host = Depends(get_current_host)):
+    return host
+
+
+@router.patch("/me", response_model=HostOut)
+def update_me(
+    body: HostSelfUpdate,
+    host: Host = Depends(get_current_host),
+    db: Session = Depends(get_db),
+):
+    """Change your own organization's logo.
+
+    Every account can do this for itself. Setting a logo used to be a superadmin
+    errand, which meant an agency that rebranded had to ask KW Hab to upload a
+    file for them — for the one thing on the platform that is unambiguously
+    theirs, and the thing members use to recognise them in the feed.
+
+    An empty string clears it, and the stepper falls back to initials.
+    """
+    fields = body.model_dump(exclude_unset=True)
+    if "logo_url" in fields:
+        host.logo_url = (fields["logo_url"] or "").strip() or None
+    db.commit()
+    db.refresh(host)
     return host
 
 

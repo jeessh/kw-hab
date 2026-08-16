@@ -30,6 +30,14 @@ export type Dimension = {
     color: string;
     /** Shown instead of initials when the bucket has one. */
     logoUrl?: string | null;
+    /**
+     * The glyph on the stepper ring. Every dimension but organization sets one:
+     * two-letter initials of "Sign up on their site" or "In person" told a
+     * member nothing, and this is a surface built for people who read icons
+     * faster than words. Organizations keep initials, because a generic
+     * building glyph on all six rings would identify none of them.
+     */
+    icon?: string;
   };
 };
 
@@ -72,8 +80,8 @@ export const DIMENSIONS: Dimension[] = [
     emoji: "💲",
     bucket: (e) =>
       e.is_free
-        ? { id: "free", label: "Free", color: "#2FA36B" }
-        : { id: "paid", label: "Paid", color: "#F59E0B" },
+        ? { id: "free", label: "Free", color: "#2FA36B", icon: "🆓" }
+        : { id: "paid", label: "Paid", color: "#F59E0B", icon: "💲" },
   },
   {
     key: "registration",
@@ -85,11 +93,21 @@ export const DIMENSIONS: Dimension[] = [
     // drop-in is one bucket rather than two.
     bucket: (e) => {
       if (!e.requires_signup) {
-        return { id: "dropin", label: "Drop in", color: "#22C55E" };
+        return { id: "dropin", label: "Drop in", color: "#22C55E", icon: "🚪" };
       }
       return e.registration_mode === "external"
-        ? { id: "external", label: "Sign up on their site", color: "#3B82F6" }
-        : { id: "internal", label: "Sign up here", color: "#9B5BD6" };
+        ? {
+            id: "external",
+            label: "Sign up on their site",
+            color: "#3B82F6",
+            icon: "🔗",
+          }
+        : {
+            id: "internal",
+            label: "Sign up here",
+            color: "#9B5BD6",
+            icon: "✍️",
+          };
     },
   },
   {
@@ -99,10 +117,11 @@ export const DIMENSIONS: Dimension[] = [
     emoji: "🗂️",
     // Virtual, in person, or for youth — the same three the admin filters on.
     bucket: (e) => {
-      if (e.is_youth) return { id: "youth", label: "Youth", color: "#F59E0B" };
+      if (e.is_youth)
+        return { id: "youth", label: "Youth", color: "#F59E0B", icon: "🧒" };
       return e.is_virtual
-        ? { id: "virtual", label: "Virtual", color: "#3B82F6" }
-        : { id: "inperson", label: "In person", color: "#2FA36B" };
+        ? { id: "virtual", label: "Virtual", color: "#3B82F6", icon: "💻" }
+        : { id: "inperson", label: "In person", color: "#2FA36B", icon: "📍" };
     },
   },
   {
@@ -115,7 +134,10 @@ export const DIMENSIONS: Dimension[] = [
     // matching runs on.
     bucket: (e) => {
       const label = e.category || FALLBACK_CATEGORY;
-      return { id: label, label, color: categoryStyle(label).color };
+      const style = categoryStyle(label);
+      // The same emoji the topic chips use, so a topic looks the same wherever
+      // it turns up — on the signup chips, the host form, and here.
+      return { id: label, label, color: style.color, icon: style.emoji };
     },
   },
 ];
@@ -128,6 +150,7 @@ export type Bucket = {
   label: string;
   color: string;
   logoUrl?: string | null;
+  icon?: string;
   /** Index in the feed of this bucket's first event — what jumping lands on. */
   index: number;
 };

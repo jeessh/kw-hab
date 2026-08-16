@@ -57,6 +57,17 @@ class HostCreate(BaseModel):
     _strip_name = field_validator("name")(_clean_name)
 
 
+class HostSelfUpdate(BaseModel):
+    """What an organization may change about itself.
+
+    Deliberately only the logo. HostUpdate carries `is_admin` and `password`,
+    and an account editing itself through that schema could hand itself
+    superadmin — the tier has to stay something only another superadmin grants.
+    """
+
+    logo_url: str | None = None
+
+
 class HostUpdate(BaseModel):
     name: str | None = Field(None, min_length=1)
     is_admin: bool | None = None
