@@ -5,7 +5,7 @@ import type { Event } from "@/lib/api";
 import { ImageDrop } from "@/components/ImageDrop";
 import { CATEGORIES } from "@/lib/categories";
 import {
-  PRICING_TEMPLATES,
+  PAID_MODELS,
   centsFrom,
   dollarsFrom,
   templateFor,
@@ -24,13 +24,14 @@ export type EventFormValues = {
   notes: string;
   registrationUrl: string;
   coverImageUrl: string;
-  category: string;
+  categories: string[];
   activityType: string;
   capacity: string;
   minAge: string;
   maxAge: string;
   frequency: Frequency;
   occurrenceCount: string;
+  repeatForever: boolean;
   pricingModel: PricingModel;
   priceAmount: string;
   priceGroupSize: string;
@@ -50,13 +51,14 @@ export const EMPTY_FORM: EventFormValues = {
   notes: "",
   registrationUrl: "",
   coverImageUrl: "",
-  category: "",
+  categories: [],
   activityType: "",
   capacity: "",
   minAge: "",
   maxAge: "",
   frequency: "once",
   occurrenceCount: "",
+  repeatForever: false,
   pricingModel: "free",
   priceAmount: "",
   priceGroupSize: "",
@@ -79,13 +81,18 @@ export function valuesFromEvent(event: Event): EventFormValues {
     notes: event.notes ?? "",
     registrationUrl: event.registration_url ?? "",
     coverImageUrl: event.cover_image_url ?? "",
-    category: event.category ?? "",
+    categories: event.categories?.length
+      ? event.categories
+      : event.category
+        ? [event.category]
+        : [],
     activityType: event.activity_type ?? "",
     capacity: event.capacity != null ? String(event.capacity) : "",
     // Editing touches one occurrence; changing how often it repeats means
     // rebuilding the series, which isn't an edit.
     frequency: "once",
     occurrenceCount: "",
+    repeatForever: false,
     pricingModel: event.pricing_model ?? "free",
     priceAmount: dollarsFrom(event.price_cents),
     priceGroupSize:
@@ -106,13 +113,12 @@ export function payloadFrom(v: EventFormValues) {
   const startsAt =
     v.date && v.time ? new Date(`${v.date}T${v.time}`).toISOString() : null;
   const accessibility_tags: string[] = [];
-  if (v.pricingModel === "free" || v.pricingModel === "donation")
-    accessibility_tags.push("free");
+  if (v.pricingModel === "free") accessibility_tags.push("free");
   return {
     title: v.title.trim(),
     description: v.description.trim(),
     notes: v.notes.trim() || null,
-    category: v.category || null,
+    categories: v.categories,
     activity_type: v.activityType || null,
     location: v.location.trim() || null,
     starts_at: startsAt,
@@ -129,9 +135,11 @@ export function payloadFrom(v: EventFormValues) {
     // every program went out with no tags at all.
     accessibility_tags,
     frequency: v.frequency,
-    occurrence_count: v.occurrenceCount.trim()
-      ? Number(v.occurrenceCount)
-      : null,
+    occurrence_count:
+      v.repeatForever || !v.occurrenceCount.trim()
+        ? null
+        : Number(v.occurrenceCount),
+    repeat_forever: v.frequency !== "once" && v.repeatForever,
     pricing_model: v.pricingModel,
     price_cents: centsFrom(v.priceAmount),
     price_group_size: v.priceGroupSize.trim()
@@ -141,7 +149,7 @@ export function payloadFrom(v: EventFormValues) {
     price_note: v.priceNote.trim() || null,
     // Free is a consequence of the pricing model, not a separate answer.
     // Letting them disagree is how a "Free" badge ends up on a $40 course.
-    is_free: v.pricingModel === "free" || v.pricingModel === "donation",
+    is_free: v.pricingModel === "free",
     // Blank means "no limit" and "any age", which is not the same as zero.
     capacity: v.capacity.trim() ? Number(v.capacity) : null,
     min_age: v.minAge.trim() ? Number(v.minAge) : null,
@@ -158,14 +166,14 @@ export function missingRequired(v: EventFormValues): string[] {
   if (!v.location.trim()) missing.push("location");
   if (!v.description.trim()) missing.push("description");
   if (!v.coverImageUrl) missing.push("image");
-  if (!v.category) missing.push("activity type");
+  if (v.categories.length === 0) missing.push("activity type");
   const t = templateFor(v.pricingModel);
   if (t.needsAmount && !centsFrom(v.priceAmount)) missing.push("price");
   if (t.needsGroup && !v.priceGroupSize.trim()) missing.push("group size");
   if (t.needsSessions && !v.priceSessions.trim()) missing.push("sessions");
   if (v.pricingModel === "custom" && !v.priceNote.trim())
     missing.push("cost description");
-  if (v.frequency !== "once" && !v.occurrenceCount.trim())
+  if (v.frequency !== "once" && !v.repeatForever && !v.occurrenceCount.trim())
     missing.push("how many times it repeats");
   return missing;
 }
@@ -308,8 +316,20 @@ export function EventForm({
               <input
                 type="date"
                 value={values.date}
-                onChange={(e) => set("date", e.target.value)}
-                className={fieldClass}
+                // Chrome's date field happily takes a six-digit year — type
+                // 999999 and it is accepted, then the program sits a hundred
+                // thousand years out where nobody will ever see it. min/max
+                // bound the spinner and mark it invalid; the clamp catches
+                // typing, which min/max alone does not stop.
+                min="2000-01-01"
+                max="2100-12-31"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const year = Number(v.slice(0, 4));
+                  if (v && (v.length > 10 || year > 2100)) return;
+                  set("date", v);
+                }}
+                className={`${fieldClass} date-icon-left`}
               />
             </Labelled>
           </div>
@@ -393,15 +413,23 @@ export function EventForm({
           </div>
         </div>
 
-        <Labelled label="Posting link">
+        <Labelled label="Posting link (optional)">
+          {/* type="text", not "url": the browser's url validation rejects
+              "yourorg.ca" outright, and someone pasting what is in their
+              address bar has not made a mistake. The API adds https:// when
+              the scheme is missing and leaves it alone when it isn't. */}
           <input
-            type="url"
+            type="text"
+            inputMode="url"
             value={values.registrationUrl}
             onChange={(e) => set("registrationUrl", e.target.value)}
             className={fieldClass}
-            placeholder="https://yourorg.ca/register"
+            placeholder="yourorg.ca/register"
           />
         </Labelled>
+        <p className="-mt-2 text-base text-muted">
+          Leave this blank if people sign up here rather than on your own site.
+        </p>
       </div>
 
       {/* Topic and kind aren't on the mockup, but the member feed groups and
@@ -415,22 +443,34 @@ export function EventForm({
         </legend>
         <p className="mt-1 text-base text-muted">
           Members pick these same topics as interests — this is what puts your
-          event in front of the right people.
+          event in front of the right people. Choose as many as fit.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {CATEGORIES.map((c) => (
             <button
               key={c.label}
               type="button"
-              onClick={() => set("category", c.label)}
-              aria-pressed={values.category === c.label}
+              // A wellness walk that is also a social was being filed as one
+              // or the other, and the feed matches interests against these —
+              // so dropping the second decided who never saw it.
+              onClick={() =>
+                set(
+                  "categories",
+                  values.categories.includes(c.label)
+                    ? values.categories.filter((x) => x !== c.label)
+                    : [...values.categories, c.label],
+                )
+              }
+              aria-pressed={values.categories.includes(c.label)}
               className={`rounded-full border px-4 py-2 text-base transition-colors ${
-                values.category === c.label
+                values.categories.includes(c.label)
                   ? "border-transparent text-ink"
                   : "border-[#B9B7C4] text-ink hover:bg-slate-50"
               }`}
               style={
-                values.category === c.label ? { background: CYAN } : undefined
+                values.categories.includes(c.label)
+                  ? { background: CYAN }
+                  : undefined
               }
             >
               <span aria-hidden>{c.emoji}</span> {c.label}
@@ -467,97 +507,79 @@ export function EventForm({
           </span>
           What does it cost?
         </legend>
-        <div className="mt-3 flex flex-col gap-2">
-          {PRICING_TEMPLATES.map((t) => (
-            <label
-              key={t.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${
-                values.pricingModel === t.value
-                  ? "border-transparent"
-                  : "border-[#B9B7C4] hover:bg-slate-50"
-              }`}
-              style={
-                values.pricingModel === t.value
-                  ? { background: `${CYAN}33`, borderColor: CYAN }
-                  : undefined
-              }
-            >
-              <input
-                type="radio"
-                name="pricing"
-                checked={values.pricingModel === t.value}
-                onChange={() => set("pricingModel", t.value)}
-                className="mt-1 h-4 w-4"
-              />
-              <span>
-                <span className="block text-lg text-ink">{t.label}</span>
-                <span className="block text-base text-muted">{t.hint}</span>
-              </span>
-            </label>
-          ))}
+        {/* Free or paid first; how it charges only if it charges. Six options
+            at once made a simple question look hard, and the two "free" ones
+            sitting side by side were the pair people stalled on. */}
+        <div className="mt-3 flex flex-wrap gap-3">
+          {(["free", "paid"] as const).map((choice) => {
+            const isPaid = values.pricingModel !== "free";
+            const on = choice === "paid" ? isPaid : !isPaid;
+            return (
+              <button
+                key={choice}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  set(
+                    "pricingModel",
+                    // Coming back to paid lands on the commonest shape rather
+                    // than on nothing.
+                    choice === "free" ? "free" : "per_session",
+                  )
+                }
+                className={`min-h-[52px] rounded-xl border px-8 font-display text-lg font-semibold transition-colors ${
+                  on
+                    ? "border-transparent text-ink"
+                    : "border-[#B9B7C4] text-ink hover:bg-slate-50"
+                }`}
+                style={on ? { background: CYAN } : undefined}
+              >
+                {choice === "free" ? "Free" : "Paid"}
+              </button>
+            );
+          })}
         </div>
 
-        {(() => {
-          const t = templateFor(values.pricingModel);
-          if (values.pricingModel === "custom") {
-            return (
-              <div className="mt-3">
-                <Labelled label="Describe the cost" required>
-                  <input
-                    value={values.priceNote}
-                    onChange={(e) => set("priceNote", e.target.value)}
-                    className={fieldClass}
-                    placeholder="$8 per class / $60 for an 8-class pass"
-                  />
-                </Labelled>
-              </div>
-            );
-          }
-          if (!t.needsAmount) return null;
-          return (
-            <div className="mt-3 flex flex-wrap gap-4">
-              <div className="min-w-[160px] flex-1">
-                <Labelled label="Amount" required>
-                  <input
-                    inputMode="decimal"
-                    value={values.priceAmount}
-                    onChange={(e) => set("priceAmount", e.target.value)}
-                    className={fieldClass}
-                    placeholder="12.00"
-                  />
-                </Labelled>
-              </div>
-              {t.needsGroup && (
-                <div className="min-w-[160px]">
-                  <Labelled label="People it covers" required>
+        {values.pricingModel !== "free" && (
+          <div className="mt-4">
+            <p className="text-base font-semibold text-ink">How is it paid?</p>
+            <div className="mt-2 flex flex-col gap-2">
+              {PAID_MODELS.map((m) => {
+                const t = templateFor(m);
+                return (
+                  <label
+                    key={m}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${
+                      values.pricingModel === m
+                        ? "border-transparent"
+                        : "border-[#B9B7C4] hover:bg-slate-50"
+                    }`}
+                    style={
+                      values.pricingModel === m
+                        ? { background: `${CYAN}33`, borderColor: CYAN }
+                        : undefined
+                    }
+                  >
                     <input
-                      type="number"
-                      min={2}
-                      value={values.priceGroupSize}
-                      onChange={(e) => set("priceGroupSize", e.target.value)}
-                      className={fieldClass}
-                      placeholder="4"
+                      type="radio"
+                      name="pricing"
+                      checked={values.pricingModel === m}
+                      onChange={() => set("pricingModel", m)}
+                      className="mt-1 h-4 w-4"
                     />
-                  </Labelled>
-                </div>
-              )}
-              {t.needsSessions && (
-                <div className="min-w-[160px]">
-                  <Labelled label="Sessions it covers" required>
-                    <input
-                      type="number"
-                      min={2}
-                      value={values.priceSessions}
-                      onChange={(e) => set("priceSessions", e.target.value)}
-                      className={fieldClass}
-                      placeholder="8"
-                    />
-                  </Labelled>
-                </div>
-              )}
+                    <span>
+                      <span className="block text-lg text-ink">{t.label}</span>
+                      <span className="block text-base text-muted">
+                        {t.hint}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
             </div>
-          );
-        })()}
+          </div>
+        )}
+
         {values.pricingModel === "series" && (
           <p className="mt-2 text-base text-muted">
             Signing up once will enrol the member in every date in this series.
@@ -585,7 +607,7 @@ export function EventForm({
               </select>
             </Labelled>
           </div>
-          {values.frequency !== "once" && (
+          {values.frequency !== "once" && !values.repeatForever && (
             <div className="min-w-[170px]">
               <Labelled label="How many times" required>
                 <input
@@ -600,11 +622,27 @@ export function EventForm({
               </Labelled>
             </div>
           )}
+          {values.frequency !== "once" && (
+            // A drop-in that has run every Friday for nine years has no
+            // session count to give, and making one up to satisfy the form put
+            // a wrong number on the listing.
+            <label className="flex min-h-[52px] cursor-pointer items-center gap-2.5 text-lg text-ink">
+              <input
+                type="checkbox"
+                checked={values.repeatForever}
+                onChange={(e) => set("repeatForever", e.target.checked)}
+                className="h-5 w-5"
+              />
+              It keeps going
+            </label>
+          )}
         </div>
         {values.frequency !== "once" && (
           <p className="mt-2 text-base text-muted">
             Each date is posted separately, so people can save the ones they can
             make.
+            {values.repeatForever &&
+              " We'll post about two years ahead and extend it from there."}
           </p>
         )}
       </fieldset>

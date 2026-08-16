@@ -26,6 +26,12 @@ export function RegisterPrompt({
   return (
     <div
       className="absolute inset-0 z-[60] grid place-items-center bg-white/40 px-6 backdrop-blur-md"
+      // Clicking the backdrop closes it. Guarded on the target being the
+      // backdrop itself, so a click that starts inside the panel and drifts out
+      // (selecting text, mostly) doesn't dismiss the thing being read.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onSkip();
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="register-prompt-title"

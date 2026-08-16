@@ -14,8 +14,7 @@ export type DimensionKey =
   | "price"
   | "registration"
   | "eventType"
-  | "activityType"
-  | "cost";
+  | "activityType";
 
 export type Dimension = {
   key: DimensionKey;
@@ -68,8 +67,8 @@ export const DIMENSIONS: Dimension[] = [
   },
   {
     key: "price",
-    label: "Price",
-    heading: "Price",
+    label: "Cost",
+    heading: "Cost",
     emoji: "💲",
     bucket: (e) =>
       e.is_free
@@ -117,18 +116,6 @@ export const DIMENSIONS: Dimension[] = [
     bucket: (e) => {
       const label = e.category || FALLBACK_CATEGORY;
       return { id: label, label, color: categoryStyle(label).color };
-    },
-  },
-  {
-    key: "cost",
-    label: "Cost",
-    heading: "Cost",
-    emoji: "🎟️",
-    bucket: (e) => {
-      if (e.pricing_model === "donation")
-        return { id: "donation", label: "Donations welcome", color: "#2FA36B" };
-      if (e.is_free) return { id: "free", label: "Free", color: "#22C55E" };
-      return { id: "paid", label: e.price_label || "Paid", color: "#F59E0B" };
     },
   },
 ];

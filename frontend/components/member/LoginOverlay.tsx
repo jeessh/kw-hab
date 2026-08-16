@@ -22,17 +22,21 @@ const PICK_COUNT = 1;
  * Two steps, because the credential is a name plus an ordered icon key: the
  * name narrows it, the icons open it.
  */
+type Mode = "login" | "signup";
+
 export function LoginOverlay({
   onClose,
   onSignedIn,
-  onSignUp,
 }: {
   onClose: () => void;
   /** Fired once the cookie is set. */
   onSignedIn: () => void;
-  /** Send them to the full sign-up wizard instead. */
-  onSignUp: () => void;
 }) {
+  // Logging in and creating an account are the same two questions asked for
+  // different reasons, and the overlay used to only do the first — "Sign up"
+  // threw people out to /signup, losing the modal and the program behind it.
+  // One surface, one switch, no navigation.
+  const [mode, setMode] = useState<Mode>("login");
   const [step, setStep] = useState<"name" | "icons">("name");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -51,7 +55,7 @@ export function LoginOverlay({
     });
   }
 
-  async function logIn() {
+  async function submit() {
     setBusy(true);
     setError(null);
     try {
@@ -63,14 +67,19 @@ export function LoginOverlay({
             first_name: first,
             last_name: last,
             icons: picked,
-            // This is the log-in door. Somebody whose icons don't match an
-            // existing account is told so, not quietly given a second one.
-            create_new: false,
+            // Which door this is. Logging in never quietly creates a second
+            // account, and creating one never silently signs you into
+            // somebody else's.
+            create_new: mode === "signup",
           }),
         },
       );
       if (res.mode === "conflict") {
-        setError("Those icons don't match. Try again.");
+        setError(
+          mode === "login"
+            ? "That icon doesn't match this name. Try another, or create an account."
+            : "Somebody with that name already uses that icon. Pick a different one.",
+        );
         setPicked([]);
         setBusy(false);
         return;
@@ -89,6 +98,12 @@ export function LoginOverlay({
   return (
     <div
       className="absolute inset-0 z-[60] grid place-items-center bg-white/40 px-6 backdrop-blur-md"
+      // Clicking the backdrop closes it. Guarded on the target being the
+      // backdrop itself, so a click that starts inside the panel and drifts out
+      // (selecting text, mostly) doesn't dismiss the thing being read.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="login-overlay-title"
@@ -106,13 +121,15 @@ export function LoginOverlay({
           id="login-overlay-title"
           className="font-display text-4xl font-extrabold text-ink"
         >
-          You&apos;re not logged in yet!
+          {mode === "login" ? "Log in" : "Create an account"}
         </h2>
 
         {step === "name" ? (
           <>
             <p className="mt-4 text-xl text-ink">
-              Log in with your name to keep track of your saved events.
+              {mode === "login"
+                ? "Your name and your icon are how you log in."
+                : "Two things and you're done — your name, then an icon."}
             </p>
             <div className="mt-6 flex flex-col gap-3">
               <input
@@ -134,7 +151,17 @@ export function LoginOverlay({
           </>
         ) : (
           <>
-            <p className="mt-4 text-xl text-ink">Choose your personal icon.</p>
+            <p className="mt-4 text-xl text-ink">
+              {mode === "login" ? "Which icon is yours?" : "Pick your icon."}
+            </p>
+            {/* Said plainly, because people were choosing one the way you
+                choose an avatar and then couldn't understand why the wrong one
+                wouldn't let them in. It's the password. */}
+            <p className="mt-1 text-base text-muted">
+              {mode === "login"
+                ? "The one you chose when you signed up. It works like a password."
+                : "This is your password — you'll tap it every time you log in, so pick one you'll remember. It isn't a profile picture."}
+            </p>
             {/* Twelve tiles, which is now the whole pool — two rows of six,
                 nothing hidden and nothing to scroll for. */}
             {/* The padding is the order badge's room to hang over a tile's
@@ -201,13 +228,25 @@ export function LoginOverlay({
           </div>
         )}
 
-        <p className="mt-5 text-base text-muted">Don&apos;t have an account?</p>
-        <button
-          onClick={onSignUp}
-          className="mt-1.5 rounded-lg bg-[#D9D9D9] px-5 py-2.5 font-display text-xl font-semibold text-ink transition-colors hover:bg-[#CDCDCD]"
-        >
-          Sign up
-        </button>
+        {/* Switches door without leaving. "Sign up" used to navigate to the
+            wizard, which threw away the modal and the program behind it —
+            somebody who pressed it to save an event came back to neither. */}
+        <p className="mt-6 text-base text-muted">
+          {mode === "login"
+            ? "First time here?"
+            : "Already have an account?"}{" "}
+          <button
+            onClick={() => {
+              setMode(mode === "login" ? "signup" : "login");
+              setError(null);
+              setPicked([]);
+              setStep("name");
+            }}
+            className="font-semibold text-accent underline underline-offset-2"
+          >
+            {mode === "login" ? "Create an account" : "Log in"}
+          </button>
+        </p>
 
         {/* The way into the staff console.
             It used to live on the landing page, and the landing page is gone —
@@ -263,7 +302,7 @@ export function LoginOverlay({
                 setError(null);
                 setStep("icons");
               } else {
-                void logIn();
+                void submit();
               }
             }}
             disabled={
@@ -273,7 +312,13 @@ export function LoginOverlay({
             className="rounded-lg px-6 py-2.5 font-display text-lg font-semibold text-ink transition-transform enabled:hover:scale-[1.03] disabled:opacity-40"
             style={{ background: CYAN }}
           >
-            {step === "name" ? "Next" : busy ? "…" : "Log In"}
+            {step === "name"
+              ? "Next"
+              : busy
+                ? "…"
+                : mode === "login"
+                  ? "Log in"
+                  : "Create account"}
           </button>
         </div>
       </div>

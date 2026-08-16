@@ -40,20 +40,30 @@ def occurrences(
     frequency: str,
     count: int | None = None,
     until: datetime | None = None,
+    indefinite: bool = False,
 ) -> list[datetime]:
     """Every start time in the series, first included.
 
-    Either `count` or `until` bounds it. Neither is an error rather than an
-    infinite series — an unbounded repeating program is almost always a form
-    filled in wrong, and guessing an end date on someone's behalf puts dates in
-    the calendar nobody chose.
+    Either `count` or `until` bounds it — or `indefinite`, which is the agency
+    saying out loud that the program has no planned end. A drop-in that has run
+    every Friday for nine years has no session count to give, and making one up
+    to satisfy the form put a wrong number on the listing.
+
+    Without any of the three it is still an error: an unbounded repeating
+    program is otherwise almost always a form filled in wrong, and guessing an
+    end date on someone's behalf puts dates in the calendar nobody chose.
+
+    Indefinite still materializes rows, so it runs to MAX_OCCURRENCES — about
+    two years of weekly. Rows are what capacity and saves attach to, and two
+    years is far enough out that extending it is a scheduled job, not a thing a
+    member ever waits on.
     """
     frequency = (frequency or "once").lower()
     if frequency not in FREQUENCIES:
         raise RecurrenceError(f"Unknown frequency: {frequency}")
     if frequency == "once":
         return [start]
-    if count is None and until is None:
+    if count is None and until is None and not indefinite:
         raise RecurrenceError(
             "A repeating program needs either a number of sessions or an end date."
         )

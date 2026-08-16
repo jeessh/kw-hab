@@ -53,6 +53,38 @@ function browserSupportsHeadTracking(): boolean {
 // we ignore its gaze estimate and drive the cursor from head orientation
 // (far steadier). Same four handlers as useSpeechCommands: point the head at an
 // edge and hold ~1.5s to fire. `paused` freezes dwell.
+/** How far the pointer must move before we believe it moved. */
+const DEADZONE_PX = 2.5;
+
+/**
+ * Hard-stop the webcam.
+ *
+ * webgazer.end() stops its own loop but does not reliably stop the underlying
+ * MediaStreamTracks, so the browser goes on reporting the tab as recording and
+ * the camera indicator stays lit. Nothing about that is subtle to a user who
+ * just turned the feature off.
+ */
+function releaseCamera(): void {
+  if (typeof document === "undefined") return;
+  for (const el of Array.from(document.querySelectorAll("video"))) {
+    const stream = el.srcObject as MediaStream | null;
+    if (!stream || typeof stream.getTracks !== "function") continue;
+    // Only ours — never a video the page itself is playing.
+    if (!/webgazer/i.test(el.id) && !/webgazer/i.test(el.className)) continue;
+    for (const track of stream.getTracks()) {
+      try {
+        track.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    el.srcObject = null;
+  }
+  for (const id of ["webgazerVideoContainer", "webgazerVideoFeed", "webgazerFaceOverlay", "webgazerFaceFeedbackBox"]) {
+    document.getElementById(id)?.remove();
+  }
+}
+
 export function useHeadTracking(
   enabled: boolean,
   handlers: HeadTrackingHandlers,
@@ -62,6 +94,10 @@ export function useHeadTracking(
   const [calibrating, setCalibrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<CursorState>(INITIAL);
+  // Read inside the frame loop for the deadzone comparison, without making the
+  // loop depend on a value that changes every frame.
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
   // A face is detected when the tracker has landmark positions.
   const [faceReady, setFaceReady] = useState(false);
 
@@ -133,14 +169,27 @@ export function useHeadTracking(
     const cy = Math.max(0, Math.min(h, screen.y));
 
     // Adaptive smoothing (one-euro): steady at rest, responsive on real moves.
+    //
+    // Tuned much heavier than it was. A head pose estimated per frame from
+    // landmarks is noisy, and at minCutoff 0.5 the cursor shook constantly and
+    // snapped when it did move — "aggressive and jerky". Lower minCutoff buys
+    // stillness at rest; the low beta stops it lurching when someone turns.
+    // Extra latency is the price, and it is the right one: this is a pointer
+    // for people who cannot use a mouse, so being calm beats being quick.
     if (!filtersRef.current) {
       filtersRef.current = {
-        x: new OneEuro({ minCutoff: 0.5, beta: 0.004 }),
-        y: new OneEuro({ minCutoff: 0.5, beta: 0.004 }),
+        x: new OneEuro({ minCutoff: 0.12, beta: 0.0012 }),
+        y: new OneEuro({ minCutoff: 0.12, beta: 0.0012 }),
       };
     }
-    const sx = filtersRef.current.x.filter(cx, now);
-    const sy = filtersRef.current.y.filter(cy, now);
+    const fx = filtersRef.current.x.filter(cx, now);
+    const fy = filtersRef.current.y.filter(cy, now);
+
+    // Below this, treat it as the same place. Sub-pixel drift redrawing every
+    // frame is what reads as a tremor even when the filter is doing its job.
+    const prev = cursorRef.current;
+    const sx = Math.abs(fx - prev.x) < DEADZONE_PX ? prev.x : fx;
+    const sy = Math.abs(fy - prev.y) < DEADZONE_PX ? prev.y : fy;
 
     // Freeze dwell during the calibrating→done transition frames (the map
     // exists a beat before calibratingRef flips) so no action can fire early.
@@ -214,6 +263,11 @@ export function useHeadTracking(
             /* ignore */
           }
         }
+        // webgazer.end() leaves the MediaStream open: the tab kept showing
+        // "recording" and the camera light stayed on after head tracking was
+        // switched off, which for a webcam is not a cosmetic bug. Stop every
+        // track ourselves and take the elements out of the DOM.
+        releaseCamera();
       }, 0);
     };
 
@@ -277,6 +331,19 @@ export function useHeadTracking(
   }, [enabled]);
 
   // While enabled, poll the tracker for a detected face (drives the aim hint).
+  // A last-resort release. The teardown above handles the normal path, but a
+  // hard navigation or a crash in webgazer's own shutdown would otherwise leave
+  // the camera light on until the tab closes.
+  useEffect(() => {
+    if (!enabled) return;
+    const onGone = () => releaseCamera();
+    window.addEventListener("pagehide", onGone);
+    return () => {
+      window.removeEventListener("pagehide", onGone);
+      releaseCamera();
+    };
+  }, [enabled]);
+
   useEffect(() => {
     if (!enabled) {
       setFaceReady(false);

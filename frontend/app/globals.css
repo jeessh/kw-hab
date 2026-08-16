@@ -58,3 +58,26 @@ body {
     display: none !important;
   }
 }
+
+/* The date field's calendar button, moved to the leading edge.
+   People were clicking the label and the empty middle of the field expecting
+   the picker; the control was at the far right, past the text, where nothing
+   else on this form lives. Chrome/Safari only — Firefox has no picker button
+   and the padding is harmless there. */
+.date-icon-left {
+  position: relative;
+  padding-left: 2.75rem;
+}
+.date-icon-left::-webkit-calendar-picker-indicator {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.65;
+}
+.date-icon-left::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

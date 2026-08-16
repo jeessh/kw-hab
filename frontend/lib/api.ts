@@ -67,6 +67,8 @@ export type Event = {
   description: string;
   /** Extra details, shown under the description in the detail popup. */
   notes?: string | null;
+  /** Every topic it's about. `category` is the first of these. */
+  categories?: string[];
   category?: string | null;
   /** The shape of the program (Class, Drop-in, Outing) — see lib/activities. */
   activity_type?: string | null;
