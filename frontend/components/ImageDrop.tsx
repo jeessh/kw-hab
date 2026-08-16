@@ -5,14 +5,16 @@ import { ApiError, uploadImage } from "@/lib/api";
 import {
   ACCEPTED_IMAGE_TYPES,
   ACCEPTED_LABEL,
-  IDEAL_EDGE,
+  IMAGE_SIZING,
   ImageRejected,
-  MIN_EDGE,
   prepareImage,
+  type SizingKey,
 } from "@/lib/prepareImage";
 
 type BaseProps = {
   label: string;
+  /** What the image is for — decides the size asked for. Covers by default. */
+  sizing?: SizingKey;
 };
 
 type SingleProps = BaseProps & {
@@ -32,6 +34,8 @@ type Props = SingleProps | MultiProps;
 // Image uploader (drag or click). Single mode = one replaceable cover;
 // multi = a removable thumbnail grid. Uploads immediately, returns the URL(s).
 export function ImageDrop(props: Props) {
+  const sizing = props.sizing ?? "cover";
+  const { minEdge, idealEdge } = IMAGE_SIZING[sizing];
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,7 +52,7 @@ export function ImageDrop(props: Props) {
         // Checked and resized before it goes anywhere: a 12MP photo used to
         // upload slowly and then fail the server's 5MB cap, and a 200px logo
         // uploaded fine and looked like a smear on every card.
-        urls.push(await uploadImage(await prepareImage(f)));
+        urls.push(await uploadImage(await prepareImage(f, sizing)));
       }
       if (props.multiple) {
         props.onChange([...props.value, ...urls]);
@@ -135,8 +139,8 @@ export function ImageDrop(props: Props) {
             {/* Said up front rather than as an error afterwards. People were
                 uploading whatever they had and finding out on rejection. */}
             <span className="text-sm text-muted">
-              {ACCEPTED_LABEL} · {IDEAL_EDGE}×{IDEAL_EDGE} works best · at least{" "}
-              {MIN_EDGE}×{MIN_EDGE}
+              {ACCEPTED_LABEL} · {idealEdge}×{idealEdge} works best · at least{" "}
+              {minEdge}×{minEdge}
             </span>
           </>
         )}

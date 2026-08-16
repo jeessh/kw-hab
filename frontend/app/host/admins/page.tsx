@@ -494,7 +494,12 @@ function LogoModal({
   return (
     <Modal title={`Logo for ${admin.name}`} onClose={onClose}>
       <div className="mt-4">
-        <ImageDrop label="Organization logo" value={logoUrl} onChange={setLogoUrl} />
+        <ImageDrop
+          label="Organization logo"
+          sizing="logo"
+          value={logoUrl}
+          onChange={setLogoUrl}
+        />
       </div>
       {error && (
         <p role="alert" className="mt-3 text-sm font-medium text-red-600">
@@ -604,6 +609,7 @@ function AddAdminModal({
             so this is the organization's face, not decoration. */}
         <ImageDrop
           label="Organization logo"
+          sizing="logo"
           value={logoUrl}
           onChange={setLogoUrl}
         />
