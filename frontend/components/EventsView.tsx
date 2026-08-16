@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AnimatePresence,
@@ -68,11 +67,10 @@ import {
 
 const DROP_THRESHOLD = 150; // drag-down px to save
 const SETTINGS_THRESHOLD = 130; // drag-up px to open settings
-const HOLD_TOUCH_MS = 2000; // press-and-hold on touch/mouse
-const HOLD_KEY_MS = 1000; // keyboard hold (ArrowUp / ArrowDown)
 const NAV_HOVER_MS = 1500; // hover-dwell on a side zone to move
 const NAV_PRESS_MS = 500; // press-and-hold a side zone to move (also covers touch)
 const NAV_PEEK = 96; // px the whole carousel slides while a side dwell builds
+const SWIPE_THRESHOLD = 90; // px sideways to page to the next/previous card
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 // Card date format, e.g. "July 13, 2026".
@@ -97,7 +95,6 @@ export function EventsView({
   eventsPromise: Promise<Event[]>;
   attendedPromise: Promise<Event[]>;
 }) {
-  const router = useRouter();
   const reduceMotion = useReducedMotion();
   const [me, setMe] = useState<Me | null>(initialMe);
   const [events, setEvents] = useState<Event[]>([]);
@@ -119,7 +116,6 @@ export function EventsView({
   const [view, setView] = useState<"events" | "settings">("events");
   const [confirming, setConfirming] = useState(false);
 
-  const [holdProgress, setHoldProgress] = useState(0);
   const [flying, setFlying] = useState(false);
   const [dropPulse, setDropPulse] = useState(false);
   const [srMessage, setSrMessage] = useState("");
@@ -178,8 +174,6 @@ export function EventsView({
   // Which side zone is currently dwelling + how far along (0→1), for its UI.
   const [peekSide, setPeekSide] = useState<"left" | "right" | null>(null);
 
-  const holdSave = useHold();
-  const holdSettings = useHold();
   const holdNav = useHold();
 
   const {
@@ -610,43 +604,6 @@ export function EventsView({
     setView("events");
   }, []);
 
-  // ---- hold drivers ----
-  const startSaveHold = useCallback(
-    (ms: number) => {
-      if (flying) return;
-      holdSave.start(
-        ms,
-        (p) => {
-          setHoldProgress(p);
-          cardScale.set(1 + p * 0.06);
-        },
-        () => {
-          setHoldProgress(0);
-          void flyToDrop();
-        },
-      );
-    },
-    [holdSave, flying, flyToDrop, cardScale],
-  );
-  const cancelSaveHold = useCallback(() => {
-    holdSave.cancel(() => setHoldProgress(0));
-    if (!flying) void animate(cardScale, 1, { duration: 0.18 });
-  }, [holdSave, flying, cardScale]);
-
-  const startSettingsHold = useCallback(
-    (ms: number) => {
-      holdSettings.start(
-        ms,
-        (p) => setSettingsReveal(p),
-        () => openSettings(),
-      );
-    },
-    [holdSettings, openSettings],
-  );
-  const cancelSettingsHold = useCallback(() => {
-    holdSettings.cancel(() => setSettingsReveal(0));
-  }, [holdSettings]);
-
   // ---- side-zone navigation (hover-dwell or press-and-hold) ----
   // A dwell can outlive state changes, so its guard reads live refs (not values
   // closed over at start) or auto-repeat would keep firing in the background.
@@ -944,17 +901,18 @@ export function EventsView({
           break;
         case "ArrowDown":
           e.preventDefault();
-          if (!e.repeat) startSaveHold(HOLD_KEY_MS);
+          // Saves on the press. It used to need the key held for a second,
+          // which is the same auto-hold that fired for people resting a finger
+          // on the card and never fired for people who let go early.
+          if (!e.repeat) void saveCurrent();
           break;
         case "ArrowUp":
           e.preventDefault();
-          if (!e.repeat) startSettingsHold(HOLD_KEY_MS);
+          if (!e.repeat) openSettings();
           break;
       }
     };
     const onUp = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown") cancelSaveHold();
-      if (e.key === "ArrowUp") cancelSettingsHold();
     };
     window.addEventListener("keydown", onDown);
     window.addEventListener("keyup", onUp);
@@ -967,10 +925,6 @@ export function EventsView({
     flying,
     next,
     prev,
-    startSaveHold,
-    cancelSaveHold,
-    startSettingsHold,
-    cancelSettingsHold,
     closeSettings,
   ]);
 
@@ -1259,12 +1213,17 @@ export function EventsView({
                   style={{ x, y, rotate }}
                   whileDrag={{ scale: 1.03 }}
                   onDragStart={() => {
-                    cancelSaveHold();
-                    cancelSettingsHold();
                     resetNav();
                   }}
                   onDrag={(_, info) => {
                     const dyy = info.offset.y;
+                    // Sideways travel is paging, not saving — don't fill the
+                    // save zone while someone is swiping across.
+                    if (Math.abs(info.offset.x) > Math.abs(dyy)) {
+                      setSaveReveal(0);
+                      setSettingsReveal(0);
+                      return;
+                    }
                     if (dyy > 0) {
                       setSaveReveal(clamp01(dyy / DROP_THRESHOLD));
                       setSettingsReveal(0);
@@ -1275,14 +1234,29 @@ export function EventsView({
                   }}
                   onDragEnd={(_, info) => {
                     const dyy = info.offset.y;
+                    const dxx = info.offset.x;
                     setSaveReveal(0);
                     setSettingsReveal(0);
+                    // Whichever axis they actually moved along. Comparing the
+                    // two stops a sloppy downward drag that wandered sideways
+                    // from paging instead of saving.
+                    if (Math.abs(dxx) > Math.abs(dyy)) {
+                      if (Math.abs(dxx) > SWIPE_THRESHOLD) {
+                        if (dxx < 0) next();
+                        else prev();
+                      }
+                      return;
+                    }
                     if (dyy > DROP_THRESHOLD) void saveCurrent();
                     else if (dyy < -SETTINGS_THRESHOLD) openSettings();
                   }}
-                  onPointerDown={() => startSaveHold(HOLD_TOUCH_MS)}
-                  onPointerUp={cancelSaveHold}
-                  onPointerCancel={cancelSaveHold}
+                  // No press-and-hold to save. Resting a finger on the card
+                  // started a two-second countdown to saving it, which fired
+                  // for people who were only steadying the phone and never
+                  // fired for people who lifted early — the same mechanism
+                  // reported as "too fast" and as "doesn't work". Saving is the
+                  // drag, the arrow key and the button, all of which say what
+                  // they are.
                   className="absolute inset-0 cursor-grab active:cursor-grabbing"
                 >
                   {/* Behind the card so only the rounded tongue shows. */}
@@ -1293,7 +1267,6 @@ export function EventsView({
                       saved={alreadySaved}
                       onExpand={setDetailFor}
                     />
-                    <HoldBadge progress={holdProgress} />
                     <AnimatePresence>
                       {confirming && <ConfirmSweep />}
                     </AnimatePresence>
@@ -1326,13 +1299,6 @@ export function EventsView({
             setAuthFor(null);
           }}
           onSignedIn={() => void handleSignedIn()}
-          onSignUp={() => {
-            // Carry the program through sign-up too, not just sign-in.
-            const next = authFor
-              ? `?next=${encodeURIComponent(`/events/${authFor.id}?save=1`)}`
-              : "";
-            router.push(`/signup${next}`);
-          }}
         />
       )}
 
@@ -1609,49 +1575,8 @@ function MenuToggle({
   );
 }
 
-/* ---------------- hold / confirm ---------------- */
+/* ---------------- confirm ---------------- */
 
-function HoldBadge({ progress }: { progress: number }) {
-  if (progress <= 0) return null;
-  const r = 40;
-  const circ = 2 * Math.PI * r;
-  return (
-    <div
-      className="pointer-events-none absolute inset-0 grid place-items-center"
-      aria-hidden
-    >
-      <div
-        className="relative grid h-28 w-28 place-items-center rounded-full"
-        style={{ background: "rgba(0,0,0,0.55)" }}
-      >
-        <svg viewBox="0 0 112 112" className="absolute inset-0 h-full w-full -rotate-90">
-          <circle
-            cx="56"
-            cy="56"
-            r={r}
-            fill="none"
-            stroke="rgba(255,255,255,0.25)"
-            strokeWidth="8"
-          />
-          <circle
-            cx="56"
-            cy="56"
-            r={r}
-            fill="none"
-            stroke="rgba(255,255,255,0.92)"
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeDasharray={circ}
-            strokeDashoffset={circ * (1 - progress)}
-          />
-        </svg>
-        <span className="font-display text-xl font-bold text-white">
-          {Math.round(progress * 100)}%
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function ConfirmSweep() {
   return (

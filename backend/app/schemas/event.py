@@ -55,6 +55,10 @@ class EventBase(BaseModel):
     title: str
     description: str = ""
     notes: str | None = None
+    # The topics it's about. `category` is the first of these and is written
+    # from them, so callers set one field and every existing read path — the
+    # interest match, the topic stepper, the console filters — still works.
+    categories: list[str] = []
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
@@ -78,6 +82,39 @@ class EventBase(BaseModel):
     cover_image_url: str | None = None
 
 
+def normalize_url(url: str | None) -> str | None:
+    """"google.com" is a URL. Someone typing it has not made a mistake.
+
+    A missing scheme was rejected outright by the browser's own url input and
+    then again here, which meant an agency pasting the address bar contents got
+    an error message about a format they had no reason to know. Anything that
+    already carries a scheme is left exactly as typed.
+    """
+    if url is None:
+        return None
+    value = url.strip()
+    if not value:
+        return None
+    if "://" in value.split("?", 1)[0]:
+        return value
+    # mailto: and tel: are schemes too, and neither takes "//".
+    if value.split(":", 1)[0].lower() in {"mailto", "tel"} and ":" in value:
+        return value
+    return f"https://{value}"
+
+
+def _sync_category(model) -> None:
+    """Keep `category` as the first of `categories`, whichever the caller sent.
+
+    One field is the truth and the other is a view of it; letting them drift
+    would mean an event that groups under one topic and matches on another.
+    """
+    if model.categories:
+        model.category = model.categories[0]
+    elif model.category:
+        model.categories = [model.category]
+
+
 class EventCreate(EventBase):
     gallery: list[EventImageIn] = []
     # once | weekly | biweekly | monthly | annual. Anything but "once" creates
@@ -85,9 +122,14 @@ class EventCreate(EventBase):
     frequency: str = "once"
     occurrence_count: int | None = None
     repeat_until: datetime | None = None
+    # "It just keeps going" — said out loud, rather than inferred from a form
+    # with the count left blank, which is far more often a mistake.
+    repeat_forever: bool = False
 
     @model_validator(mode="after")
     def _check_registration(self):
+        self.registration_url = normalize_url(self.registration_url)
+        _sync_category(self)
         validate_registration(
             self.registration_mode, self.requires_signup, self.registration_url
         )
@@ -105,6 +147,7 @@ class EventUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     notes: str | None = None
+    categories: list[str] | None = None
     category: str | None = None
     activity_type: str | None = None
     location: str | None = None
@@ -126,6 +169,16 @@ class EventUpdate(BaseModel):
     registration_mode: str | None = None
     registration_url: str | None = None
     cover_image_url: str | None = None
+
+    @model_validator(mode="after")
+    def _normalize(self):
+        if self.registration_url is not None:
+            self.registration_url = normalize_url(self.registration_url)
+        # Only when the caller actually sent topics; a PATCH that omits them
+        # must not blank the category off the back of an empty default.
+        if self.categories is not None:
+            self.category = self.categories[0] if self.categories else None
+        return self
 
 
 class EventOut(EventBase):

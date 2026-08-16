@@ -2,6 +2,14 @@
 
 import { useRef, useState } from "react";
 import { ApiError, uploadImage } from "@/lib/api";
+import {
+  ACCEPTED_IMAGE_TYPES,
+  ACCEPTED_LABEL,
+  IDEAL_EDGE,
+  ImageRejected,
+  MIN_EDGE,
+  prepareImage,
+} from "@/lib/prepareImage";
 
 type BaseProps = {
   label: string;
@@ -37,10 +45,10 @@ export function ImageDrop(props: Props) {
     try {
       const urls: string[] = [];
       for (const f of list) {
-        if (!f.type.startsWith("image/")) {
-          throw new Error("Please choose an image file.");
-        }
-        urls.push(await uploadImage(f));
+        // Checked and resized before it goes anywhere: a 12MP photo used to
+        // upload slowly and then fail the server's 5MB cap, and a 200px logo
+        // uploaded fine and looked like a smear on every card.
+        urls.push(await uploadImage(await prepareImage(f)));
       }
       if (props.multiple) {
         props.onChange([...props.value, ...urls]);
@@ -49,13 +57,15 @@ export function ImageDrop(props: Props) {
       }
     } catch (e) {
       setError(
-        e instanceof ApiError
-          ? e.status === 413
-            ? "That image is too large (max 5 MB)."
-            : "Upload failed. Please try again."
-          : e instanceof Error
-            ? e.message
-            : "Upload failed.",
+        e instanceof ImageRejected
+          ? e.message
+          : e instanceof ApiError
+            ? e.status === 413
+              ? "That image is too large (max 5 MB)."
+              : "Upload failed. Please try again."
+            : e instanceof Error
+              ? e.message
+              : "Upload failed.",
       );
     } finally {
       setBusy(false);
@@ -105,7 +115,7 @@ export function ImageDrop(props: Props) {
           void handleFiles(e.dataTransfer.files);
         }}
         aria-label={`${props.label}: drag an image here or click to choose a file`}
-        className={`mt-2 grid w-full place-items-center rounded-2xl border-2 border-dashed px-4 py-6 text-center transition-colors ${
+        className={`mt-2 grid w-full place-items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
           dragOver
             ? "border-accent bg-accent/5"
             : "border-edge hover:border-accent/60"
@@ -114,19 +124,28 @@ export function ImageDrop(props: Props) {
         {busy ? (
           <span className="text-muted">Uploading…</span>
         ) : (
-          <span className="text-muted">
-            <span className="font-semibold text-accent">
-              {!props.multiple && singleUrl ? "Replace image" : "Drop an image"}
-            </span>{" "}
-            or click to choose{props.multiple ? " (add more)" : ""}
-          </span>
+          <>
+            <ImageGlyph />
+            <span className="font-display text-lg font-semibold text-accent">
+              {!props.multiple && singleUrl ? "Replace image" : "Add an image"}
+            </span>
+            <span className="text-base text-muted">
+              Drag one here, or click to choose{props.multiple ? " (add more)" : ""}
+            </span>
+            {/* Said up front rather than as an error afterwards. People were
+                uploading whatever they had and finding out on rejection. */}
+            <span className="text-sm text-muted">
+              {ACCEPTED_LABEL} · {IDEAL_EDGE}×{IDEAL_EDGE} works best · at least{" "}
+              {MIN_EDGE}×{MIN_EDGE}
+            </span>
+          </>
         )}
       </button>
 
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept={ACCEPTED_IMAGE_TYPES.join(",")}
         multiple={props.multiple}
         className="hidden"
         onChange={(e) => void handleFiles(e.target.files)}
@@ -134,6 +153,27 @@ export function ImageDrop(props: Props) {
 
       {error && <p className="mt-2 text-sm text-pop">{error}</p>}
     </div>
+  );
+}
+
+function ImageGlyph() {
+  return (
+    <svg
+      width="34"
+      height="34"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-muted"
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.6" />
+      <path d="M21 15l-5-5-6.5 6.5L7 14l-4 4" />
+    </svg>
   );
 }
 

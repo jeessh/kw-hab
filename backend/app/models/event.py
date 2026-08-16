@@ -36,6 +36,14 @@ class Event(Base):
     # Extra details shown under the description in the detail popup. Kept apart
     # from description so the standardized pitch every listing has stays short.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The topics a program is about. A program can be more than one thing, and
+    # forcing a single one made agencies drop the second — which, since the feed
+    # matches interests against these, decided who never saw it.
+    categories: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"), default=list
+    )
+    # The first of `categories`, kept in step on every write. Interest matching,
+    # the topic stepper and the console filters all still read this one.
     category: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
     # What kind of thing it is, as distinct from what it is about: category is
     # the topic (Cooking), activity_type is the shape (a class, a drop-in

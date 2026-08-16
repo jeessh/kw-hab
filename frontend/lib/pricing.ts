@@ -15,6 +15,22 @@ export type PricingModel =
   | "series"
   | "custom";
 
+/**
+ * The ways a paid program charges.
+ *
+ * Split out from the free/paid question rather than listed alongside it: asking
+ * "which of six?" up front made choosing a cost harder than it is, when the
+ * first question is only ever free or not. "Donations welcome" is gone — it
+ * looked like a third kind of free and nobody could say what it meant for a
+ * member deciding whether they could afford to come.
+ */
+export const PAID_MODELS: PricingModel[] = [
+  "per_session",
+  "per_group",
+  "series",
+  "custom",
+];
+
 export const PRICING_TEMPLATES: {
   value: PricingModel;
   label: string;
@@ -24,12 +40,6 @@ export const PRICING_TEMPLATES: {
   needsSessions?: boolean;
 }[] = [
   { value: "free", label: "Free", hint: "No cost to attend.", needsAmount: false },
-  {
-    value: "donation",
-    label: "Free, donations welcome",
-    hint: "No fee, but people can give if they want to.",
-    needsAmount: false,
-  },
   {
     value: "per_session",
     label: "Per session",

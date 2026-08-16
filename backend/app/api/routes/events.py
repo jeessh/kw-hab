@@ -171,7 +171,13 @@ def create_event(
     The first occurrence is returned, since that's the one the console lands on.
     """
     data = body.model_dump(
-        exclude={"gallery", "frequency", "occurrence_count", "repeat_until"}
+        exclude={
+            "gallery",
+            "frequency",
+            "occurrence_count",
+            "repeat_until",
+            "repeat_forever",
+        }
     )
     starts_at = data.get("starts_at")
 
@@ -187,6 +193,7 @@ def create_event(
                 body.frequency,
                 count=body.occurrence_count,
                 until=body.repeat_until,
+                indefinite=body.repeat_forever,
             )
         except RecurrenceError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
