@@ -151,8 +151,15 @@ export const BucketStepper = memo(function BucketStepper({
                     draggable={false}
                     className="h-full w-full object-cover"
                   />
+                ) : bucket.icon ? (
+                  <span aria-hidden className="text-2xl leading-none">
+                    {bucket.icon}
+                  </span>
                 ) : (
-                  // Initials until the organization has a logo on file.
+                  // Initials until the organization has a logo on file. Only
+                  // organizations land here — every other grouping ships a
+                  // glyph, because "SU" for "Sign up on their site" said
+                  // nothing to anyone.
                   initials(bucket.label)
                 )}
                 <span className="sr-only">{bucket.label}</span>

@@ -186,6 +186,13 @@ export const createAdmin = (body: {
   logo_url?: string | null;
 }) => api<AdminAccount>("/hosts", { method: "POST", body: JSON.stringify(body) });
 
+/** An organization changing its own logo — every account may do this. */
+export const updateMyOrg = (patch: { logo_url: string | null }) =>
+  api<AdminAccount>("/hosts/me", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
 export const updateAdmin = (
   id: string,
   body: {
