@@ -185,7 +185,7 @@ function Frame({
           <div className="flex items-center justify-between gap-3 px-4 py-4 md:block">
             <div>
               <p className="font-display text-sm font-bold text-slate-900">
-                KW Community Compass
+                The Belonging Collective
               </p>
               <p className="text-xs text-slate-500">
                 {isSuper ? "Superadmin" : "Admin"}

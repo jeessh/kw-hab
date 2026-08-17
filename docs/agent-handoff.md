@@ -1,4 +1,4 @@
-# Agent Handoff — KW Community Compass
+# Agent Handoff — The Belonging Collective
 
 Self-contained briefing for spinning up additional agents. Read this + root
 `CLAUDE.md` and you have full context without replaying the conversation.

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# KW Community Compass
+# The Belonging Collective
 
 Accessible, needs-first community-programming platform for Kitchener-Waterloo
 nonprofits (hackathon build). Members discover/attend programs via a tactile,
@@ -130,7 +130,7 @@ Two invariants worth knowing before touching `app/api/routes/hosts.py`:
   rights, so your own survive.
 
 ## Status
-**https://kw-hab.vercel.app is live and public.** Both of the blockers this
+**https://the-belonging-collective.vercel.app is live and public.** Both of the blockers this
 section used to list are fixed, and the fixes were dashboard settings, so
 nothing in the repo records them — verify against the deployment, not the code:
 
@@ -141,7 +141,7 @@ nothing in the repo records them — verify against the deployment, not the code
   serverless backend reaches Supabase. `/api/health`, `/api/events` and the
   server-rendered `/events/{id}` all answer 200 against real data.
 
-Re-check with `curl https://kw-hab.vercel.app/api/health` before assuming
+Re-check with `curl https://the-belonging-collective.vercel.app/api/health` before assuming
 either has regressed; a stale "it only runs locally" belief here has already
 cost one wrong diagnosis.
 

@@ -14,10 +14,10 @@ export const metadata: Metadata = {
   // it Next emits relative og:url, which link previews ignore.
   metadataBase: new URL(siteUrl()),
   title: {
-    default: "KW Community Compass",
+    default: "The Belonging Collective",
     // Program pages supply their own name; this keeps the source visible in
     // search results and browser tabs without each page repeating it.
-    template: "%s · KW Community Compass",
+    template: "%s · The Belonging Collective",
   },
   description: "Find community programs that fit you, all in one place.",
 };
