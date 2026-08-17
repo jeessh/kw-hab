@@ -1,4 +1,4 @@
-# KW Community Compass — Backend
+# The Belonging Collective — Backend
 
 FastAPI + SQLAlchemy on Supabase Postgres (database only, not Supabase Auth).
 Custom cookie auth supports the icon / username login scheme.

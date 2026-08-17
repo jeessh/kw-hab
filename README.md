@@ -1,4 +1,4 @@
-# KW Community Compass
+# The Belonging Collective
 
 An accessible, needs-first platform where Kitchener-Waterloo nonprofits post
 community programming and members discover what fits them. Built for a one-day

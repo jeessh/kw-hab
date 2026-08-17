@@ -86,7 +86,7 @@ export default function AcceptInvitePage({
             {/* Showing who they are and who invited them is what separates this
                 from a phishing link that just asks for a password. */}
             <p className="mt-3 text-lg text-ink">
-              You&apos;ve been invited to post events on KW Community Compass.
+              You&apos;ve been invited to post events on The Belonging Collective.
               Choose a password and you&apos;re in.
             </p>
             <p className="mt-1 text-base text-muted">
