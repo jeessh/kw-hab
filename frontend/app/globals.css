@@ -82,14 +82,18 @@ body {
   opacity: 1;
 }
 
-/* Emoji centred by their ink, not their baseline.
+/* A glyph centred in a ring.
 
-   A box that centres text centres the line box, and an emoji's ink sits on the
-   alphabetic baseline — measured across the whole icon set at 24px, that puts
-   it a consistent 2.5–3px below centre, about 11% of the font size. Everything
-   around it (the ring, the tile) is centred geometrically, so the emoji is the
-   one thing that reads as crooked. Expressed in em so it holds at any size. */
-.emoji-optical {
+   The rings centre their contents with grid placement, which centres a child's
+   box. An inline span carrying `leading-none` doesn't give it an honest one:
+   the line box is one em tall while the font box is taller, so the ink sits off
+   centre inside it and the whole ring reads as crooked — initials noticeably
+   more than emoji, since uppercase has no descender to balance it.
+
+   Making the span a block gives the grid a box whose height is the line height,
+   and the ink lands within half a pixel of the ring's centre. Measured, after
+   trying it: no translate is needed, and the hand-tuned ones this replaces were
+   overcorrecting by 2-3px in the other direction. */
+.glyph-centred {
   display: block;
-  transform: translateY(-0.105em);
 }

@@ -152,7 +152,7 @@ export const BucketStepper = memo(function BucketStepper({
                     className="h-full w-full object-cover"
                   />
                 ) : bucket.icon ? (
-                  <span aria-hidden className="emoji-optical text-2xl leading-none">
+                  <span aria-hidden className="glyph-centred text-2xl leading-none">
                     {bucket.icon}
                   </span>
                 ) : (
@@ -160,7 +160,9 @@ export const BucketStepper = memo(function BucketStepper({
                   // organizations land here — every other grouping ships a
                   // glyph, because "SU" for "Sign up on their site" said
                   // nothing to anyone.
-                  initials(bucket.label)
+                  <span aria-hidden className="glyph-centred">
+                    {initials(bucket.label)}
+                  </span>
                 )}
                 <span className="sr-only">{bucket.label}</span>
               </button>
