@@ -11,7 +11,7 @@ import { CATEGORIES } from "@/lib/categories";
 type Step = "name" | "interests" | "icons" | "confirm" | "transition";
 
 // One icon — see ICON_POOL in core/icons.py for the trade this makes.
-const PICK_COUNT = 1;
+const PICK_COUNT = 2;
 
 /**
  * A same-origin path from `?next=`, or the feed.
@@ -270,10 +270,10 @@ function SignupFlow() {
             className="w-full max-w-3xl text-center"
           >
             <h1 className="font-display text-4xl font-extrabold text-ink">
-              Choose your icon
+              Choose your icons
             </h1>
             <p className="mt-2 text-lg text-muted">
-              Pick one you&apos;ll remember. It&apos;s how you sign in.
+              Pick two you&apos;ll remember, in an order you&apos;ll remember. That&apos;s how you sign in.
             </p>
 
             {/* chosen sequence so far */}
