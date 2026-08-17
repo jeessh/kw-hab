@@ -81,3 +81,15 @@ body {
 .date-icon-left::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* Emoji centred by their ink, not their baseline.
+
+   A box that centres text centres the line box, and an emoji's ink sits on the
+   alphabetic baseline — measured across the whole icon set at 24px, that puts
+   it a consistent 2.5–3px below centre, about 11% of the font size. Everything
+   around it (the ring, the tile) is centred geometrically, so the emoji is the
+   one thing that reads as crooked. Expressed in em so it holds at any size. */
+.emoji-optical {
+  display: block;
+  transform: translateY(-0.105em);
+}

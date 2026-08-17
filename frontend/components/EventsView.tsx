@@ -28,7 +28,6 @@ import {
   type MePrefs,
 } from "@/lib/api";
 import { countdown, isUpcoming } from "@/lib/time";
-import { useHold } from "@/lib/useHold";
 import { useTextToSpeech } from "@/lib/useTextToSpeech";
 import { useSpeechCommands } from "@/lib/useSpeechCommands";
 import { useHeadTracking } from "@/lib/useHeadTracking";
@@ -67,9 +66,6 @@ import {
 
 const DROP_THRESHOLD = 150; // drag-down px to save
 const SETTINGS_THRESHOLD = 130; // drag-up px to open settings
-const NAV_HOVER_MS = 1500; // hover-dwell on a side zone to move
-const NAV_PRESS_MS = 500; // press-and-hold a side zone to move (also covers touch)
-const NAV_PEEK = 96; // px the whole carousel slides while a side dwell builds
 const SWIPE_THRESHOLD = 90; // px sideways to page to the next/previous card
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -164,17 +160,11 @@ export function EventsView({
   const flyY = useMotionValue(0);
   const cardScale = useMotionValue(1);
   const cardOpacity = useMotionValue(1);
-  // Whole-carousel horizontal shift while a side-zone dwell builds (the "peek").
-  const peekX = useMotionValue(0);
 
   const cardWrapRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLButtonElement>(null); // fly target: the drop zone
-  const peekSideRef = useRef<"left" | "right" | null>(null);
 
-  // Which side zone is currently dwelling + how far along (0→1), for its UI.
-  const [peekSide, setPeekSide] = useState<"left" | "right" | null>(null);
 
-  const holdNav = useHold();
 
   const {
     supported: ttsSupported,
@@ -604,103 +594,25 @@ export function EventsView({
     setView("events");
   }, []);
 
-  // ---- side-zone navigation (hover-dwell or press-and-hold) ----
-  // A dwell can outlive state changes, so its guard reads live refs (not values
-  // closed over at start) or auto-repeat would keep firing in the background.
+  // Read inside stable callbacks without re-creating them every render.
   const flyingRef = useRef(flying);
   flyingRef.current = flying;
   const viewRef = useRef(view);
   viewRef.current = view;
+
+  // Arrows are buttons. They used to build a dwell on hover — rest a pointer
+  // near one and the feed began paging on its own, and kept paging. That is a
+  // gesture for people who cannot click, and head tracking calls next/back
+  // directly without it, so it was only ever surprising the people who could.
   const navBlocked = () => flyingRef.current || viewRef.current === "settings";
-  // True once a press-dwell commits a move, so the click that fires on release
-  // of that same press doesn't navigate a second time.
-  const navFiredRef = useRef(false);
-
-  // Dwelling a side zone slides the carousel; when the timer fills it moves a
-  // card and, while the pointer stays, repeats so you can browse continuously.
-  const runNav = useCallback(
-    (side: "left" | "right", ms: number) => {
-      if (navBlocked()) return;
-      peekSideRef.current = side;
-      setPeekSide(side);
-      const sign = side === "left" ? 1 : -1; // left → slide right, right → slide left
-      holdNav.start(
-        ms,
-        (p) => {
-          peekX.set(sign * p * NAV_PEEK);
-        },
-        () => {
-          peekX.set(0);
-          // Bail if state flipped mid-dwell (Settings opened / card flying).
-          if (navBlocked()) {
-            peekSideRef.current = null;
-            setPeekSide(null);
-            return;
-          }
-          // Only press-holds get the click guard: their release fires a click.
-          if (ms === NAV_PRESS_MS) navFiredRef.current = true;
-          if (side === "left") prev();
-          else next();
-          if (peekSideRef.current === side) runNav(side, ms);
-        },
-      );
-    },
-    [holdNav, peekX, prev, next],
-  );
-
-  // Restart the dwell with a new duration (hover ↔ press) from a clean state.
-  const startNav = useCallback(
-    (side: "left" | "right", ms: number) => {
-      holdNav.cancel();
-      runNav(side, ms);
-    },
-    [holdNav, runNav],
-  );
-
-  // Click = navigate immediately (skipping the dwell), unless this click is the
-  // release of a press-dwell that already committed.
-  const clickNav = useCallback(
-    (side: "left" | "right") => {
-      if (navFiredRef.current) {
-        navFiredRef.current = false;
-        return;
-      }
-      if (navBlocked()) return;
-      if (side === "left") prev();
-      else next();
-    },
+  const clickNavLeft = useCallback(() => {
+    if (!navBlocked()) prev();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [prev, next],
-  );
-
-  // Pointer left / released the zone before completing → smoothly slide back.
-  const resetNav = useCallback(() => {
-    peekSideRef.current = null;
-    holdNav.cancel();
-    setPeekSide(null);
-    void animate(peekX, 0, { type: "spring", stiffness: 300, damping: 30 });
-  }, [holdNav, peekX]);
-
-  // Stable per-side handlers so the memoized SideZones don't re-render on
-  // every state change. Hover-dwell also restarts on release of a press.
-  const hoverNavLeft = useCallback(
-    () => startNav("left", NAV_HOVER_MS),
-    [startNav],
-  );
-  const pressNavLeft = useCallback(() => {
-    navFiredRef.current = false;
-    startNav("left", NAV_PRESS_MS);
-  }, [startNav]);
-  const clickNavLeft = useCallback(() => clickNav("left"), [clickNav]);
-  const hoverNavRight = useCallback(
-    () => startNav("right", NAV_HOVER_MS),
-    [startNav],
-  );
-  const pressNavRight = useCallback(() => {
-    navFiredRef.current = false;
-    startNav("right", NAV_PRESS_MS);
-  }, [startNav]);
-  const clickNavRight = useCallback(() => clickNav("right"), [clickNav]);
+  }, [prev]);
+  const clickNavRight = useCallback(() => {
+    if (!navBlocked()) next();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [next]);
 
   // ---- preferences (persist to profile) ----
   const setPref = useCallback(async (patch: MePrefs) => {
@@ -1146,32 +1058,13 @@ export function EventsView({
             ) : (
             /* carousel */
             <div className="relative flex w-full flex-1 items-center justify-center">
-              <SideZone
-                side="left"
-                active={peekSide === "left"}
-                disabled={flying}
-                onEnter={hoverNavLeft}
-                onDown={pressNavLeft}
-                onUp={hoverNavLeft}
-                onClick={clickNavLeft}
-                onLeave={resetNav}
-              />
-              <SideZone
-                side="right"
-                active={peekSide === "right"}
-                disabled={flying}
-                onEnter={hoverNavRight}
-                onDown={pressNavRight}
-                onUp={hoverNavRight}
-                onClick={clickNavRight}
-                onLeave={resetNav}
-              />
+              <SideZone side="left" onClick={clickNavLeft} />
+              <SideZone side="right" onClick={clickNavRight} />
 
-              {/* Peek group: neighbours + focused card slide together on a dwell.
-                  Sits above the side zones but is pointer-events-none so its
-                  transparent flanks pass hover through; the card re-enables events. */}
+              {/* Card group.
+                  Pointer-events-none so its transparent flanks pass clicks
+                  through to the side zones; the card re-enables events. */}
               <motion.div
-                style={{ x: peekX }}
                 // pb-14 is the drop tab's room. It hangs off the bottom of the
                 // card, so without reserving for it the tab disappears behind
                 // the save bar on a short window — exactly where the gesture it
@@ -1212,9 +1105,6 @@ export function EventsView({
                   dragElastic={0.65}
                   style={{ x, y, rotate }}
                   whileDrag={{ scale: 1.03 }}
-                  onDragStart={() => {
-                    resetNav();
-                  }}
                   onDrag={(_, info) => {
                     const dyy = info.offset.y;
                     // Sideways travel is paging, not saving — don't fill the
@@ -1604,49 +1494,21 @@ function ConfirmSweep() {
 // navigate; the rest of the zone stays decorative.
 const SideZone = memo(function SideZone({
   side,
-  active,
-  disabled,
-  onEnter,
-  onLeave,
-  onDown,
-  onUp,
   onClick,
 }: {
   side: "left" | "right";
-  active: boolean;
-  disabled: boolean;
-  onEnter: () => void;
-  onLeave: () => void;
-  onDown: () => void;
-  onUp: () => void;
   onClick: () => void;
 }) {
   const isLeft = side === "left";
   return (
     <div
-      onPointerEnter={disabled ? undefined : onEnter}
-      onPointerLeave={onLeave}
-      onPointerDown={disabled ? undefined : onDown}
-      onPointerUp={onUp}
-      onPointerCancel={onLeave}
-      onClick={disabled ? undefined : onClick}
+      onClick={onClick}
       className={`absolute z-20 flex cursor-pointer items-center ${
         isLeft ? "left-0 justify-start pl-3" : "right-0 justify-end pr-3"
       }`}
-      // A forgiving margin around the arrow, not the whole flank.
-      //
-      // This was the full height of the carousel by `calc(50% - 380px)` wide —
-      // 352×295 on a laptop, about 9% of the window on each side — and merely
-      // resting a pointer inside it began a dwell that paged the feed and kept
-      // paging. A mouse user parking the cursor beside the card watched the
-      // programs scroll past on their own. The dwell exists for people who
-      // can't click; head tracking calls next/back directly and never needed
-      // this, so the size was cost without benefit.
-      //
-      // 288 wide is still nearly twice the arrow, so an imprecise press lands.
-      // The 380px constant was also stale: it assumed the old 880px card, and
-      // against the height-led card it left a 50px strip either side that
-      // looked like the zone but answered to nothing.
+      // A forgiving margin around the arrow, not the whole flank — 288 wide is
+      // nearly twice the arrow, so an imprecise press still lands. Nothing here
+      // reacts to hover any more: it is a click target, and only a click.
       style={{
         width: "min(288px, calc(50% - 300px))",
         minWidth: "96px",
@@ -1655,22 +1517,17 @@ const SideZone = memo(function SideZone({
         height: "min(232px, 100%)",
       }}
     >
-      <div
-        className="flex flex-col items-center gap-2 rounded-3xl px-4 py-6 transition-colors"
-        style={{ background: active ? "rgba(232,49,138,0.08)" : "transparent" }}
-      >
+      <div className="flex flex-col items-center gap-2 rounded-3xl px-4 py-6">
         <button
           type="button"
           aria-label={isLeft ? "Previous event" : "Next event"}
-          aria-disabled={disabled || undefined}
           onClick={(e) => {
             // Zone onClick handles pointer clicks; stop the bubble so a
             // button click (mouse or keyboard) doesn't navigate twice.
             e.stopPropagation();
-            if (!disabled) onClick();
+            onClick();
           }}
-          className="grid h-[86px] w-[152px] place-items-center rounded-full border-[1.5px] border-[#9A9A9A] bg-transparent text-6xl font-light leading-none text-[#5C5C5C] transition-transform"
-          style={{ transform: active ? "scale(1.08)" : "none" }}
+          className="grid h-[86px] w-[152px] place-items-center rounded-full border-[1.5px] border-[#9A9A9A] bg-transparent text-6xl font-light leading-none text-[#5C5C5C] transition-transform hover:scale-[1.04] active:scale-[0.98]"
         >
           <span aria-hidden>{isLeft ? "←" : "→"}</span>
         </button>

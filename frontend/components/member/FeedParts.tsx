@@ -152,7 +152,7 @@ export const BucketStepper = memo(function BucketStepper({
                     className="h-full w-full object-cover"
                   />
                 ) : bucket.icon ? (
-                  <span aria-hidden className="text-2xl leading-none">
+                  <span aria-hidden className="emoji-optical text-2xl leading-none">
                     {bucket.icon}
                   </span>
                 ) : (

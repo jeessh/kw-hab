@@ -10,15 +10,16 @@ ICON_POOL = [
     "fish", "flower", "house", "car", "heart", "star",
 ]
 
-# One icon, not three.
+# Two icons, picked one at a time.
 #
-# Chosen knowingly: this makes the whole keyspace twelve per name, so anyone who
-# knows a member's name can reach their account in at most twelve tries. The
-# rate limiter in core/rate_limit.py is now the only thing standing between a
-# guessed name and someone else's saved programs — if this ever carries data
-# worth protecting, that trade has to be revisited, not the limiter tuned.
+# Ordered, so it is 12 x 11 = 132 combinations per name rather than 66. Still
+# small, and still a knowing trade: someone who knows a member's name is a few
+# dozen guesses from their account, and the rate limiter in core/rate_limit.py
+# is what stands in the way. Two is the compromise between that and asking
+# people to remember a sequence — which is the barrier this door exists to
+# remove.
 
-ICON_COUNT = 1
+ICON_COUNT = 2
 
 
 def random_icon_set() -> list[str]:

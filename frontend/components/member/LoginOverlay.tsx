@@ -7,10 +7,9 @@ import { ALL_ICONS, emojiFor } from "@/lib/icons";
 
 export const CYAN = "#35CDEE";
 
-// One icon, not three — see ICON_POOL in core/icons.py for the trade this
-// makes. The overlay still handles it as an ordered list so nothing here has to
-// change if that decision is revisited.
-const PICK_COUNT = 1;
+// Two icons, picked one at a time. Ordered, so the sequence is part of the key
+// — see ICON_POOL in core/icons.py for the trade this makes.
+const PICK_COUNT = 2;
 
 /**
  * Signing in without leaving the feed.
@@ -32,11 +31,14 @@ export function LoginOverlay({
   /** Fired once the cookie is set. */
   onSignedIn: () => void;
 }) {
-  // Logging in and creating an account are the same two questions asked for
-  // different reasons, and the overlay used to only do the first — "Sign up"
-  // threw people out to /signup, losing the modal and the program behind it.
-  // One surface, one switch, no navigation.
-  const [mode, setMode] = useState<Mode>("login");
+  // Sign up is the door. Both modes ask the same two questions, so making the
+  // member decide which one they are before answering them was a decision they
+  // had no way to get right — and getting it wrong looked identical either way.
+  // Signing up now logs you straight in if the name and icons already match an
+  // account, and only creates one when they don't. "Log in" stays for someone
+  // who wants the strict door, where an unknown key is told so rather than
+  // quietly becoming a new account.
+  const [mode, setMode] = useState<Mode>("signup");
   const [step, setStep] = useState<"name" | "icons">("name");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -77,8 +79,8 @@ export function LoginOverlay({
       if (res.mode === "conflict") {
         setError(
           mode === "login"
-            ? "That icon doesn't match this name. Try another, or create an account."
-            : "Somebody with that name already uses that icon. Pick a different one.",
+            ? "Those icons don't match this name. Try again."
+            : "Someone already signs in with that name. If it's you, try your icons again — if it isn't, use a different pair.",
         );
         setPicked([]);
         setBusy(false);
@@ -128,8 +130,8 @@ export function LoginOverlay({
           <>
             <p className="mt-4 text-xl text-ink">
               {mode === "login"
-                ? "Your name and your icon are how you log in."
-                : "Two things and you're done — your name, then an icon."}
+                ? "Your name and your two icons are how you log in."
+                : "Your name, then two icons. If you've been here before, this signs you back in."}
             </p>
             <div className="mt-6 flex flex-col gap-3">
               <input
@@ -152,25 +154,70 @@ export function LoginOverlay({
         ) : (
           <>
             <p className="mt-4 text-xl text-ink">
-              {mode === "login" ? "Which icon is yours?" : "Pick your icon."}
+              {mode === "login" ? "Which icons are yours?" : "Pick two icons."}
             </p>
             {/* Said plainly, because people were choosing one the way you
                 choose an avatar and then couldn't understand why the wrong one
                 wouldn't let them in. It's the password. */}
             <p className="mt-1 text-base text-muted">
               {mode === "login"
-                ? "The one you chose when you signed up. It works like a password."
-                : "This is your password — you'll tap it every time you log in, so pick one you'll remember. It isn't a profile picture."}
+                ? "The two you chose when you signed up, in the same order."
+                : "These two are your password — you'll tap them every time you log in, so pick ones you'll remember. They aren't a profile picture."}
             </p>
-            {/* Twelve tiles, which is now the whole pool — two rows of six,
+
+            {/* Which of the two they're on, and what they've chosen so far.
+                One grid asked for two icons with nothing saying so read as a
+                single choice that had stopped responding. */}
+            <div className="mt-5 flex items-center gap-3">
+              <p className="font-display text-lg font-bold text-ink">
+                {picked.length >= PICK_COUNT
+                  ? "Both chosen"
+                  : `Icon ${picked.length + 1} of ${PICK_COUNT}`}
+              </p>
+              <div className="flex items-center gap-2">
+                {Array.from({ length: PICK_COUNT }).map((_, slot) => {
+                  const slug = picked[slot];
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      // Tapping a filled slot takes it back, so a mistap is
+                      // one press to undo rather than a start-again.
+                      onClick={() =>
+                        slug &&
+                        setPicked((prev) => prev.filter((s) => s !== slug))
+                      }
+                      disabled={!slug}
+                      aria-label={
+                        slug
+                          ? `Icon ${slot + 1}: ${slug}. Activate to change it.`
+                          : `Icon ${slot + 1}: not chosen yet`
+                      }
+                      className="grid h-11 w-11 place-items-center rounded-xl border-2 text-2xl leading-none disabled:cursor-default"
+                      style={{
+                        borderColor: slug ? CYAN : "#D7D5DE",
+                        borderStyle: slug ? "solid" : "dashed",
+                        background: slug ? `${CYAN}1A` : "transparent",
+                      }}
+                    >
+                      {slug ? (
+                        <span aria-hidden className="emoji-optical">
+                          {emojiFor(slug)}
+                        </span>
+                      ) : (
+                        <span aria-hidden className="text-base text-muted">
+                          {slot + 1}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Twelve tiles, which is the whole pool — two rows of six,
                 nothing hidden and nothing to scroll for. */}
-            {/* The padding is the order badge's room to hang over a tile's
-                corner. This is a scroll container, and a box that scrolls in
-                one axis clips the other too — so the badge was being sliced off
-                along the top row and the right-hand column, which is where the
-                first icon someone picks tends to be. The negative margin keeps
-                the tiles where they were. */}
-            <div className="mt-6 -mx-2 grid grid-cols-6 gap-3 px-2 pt-2">
+            <div className="mt-4 -mx-2 grid grid-cols-6 gap-3 px-2 pt-2">
               {ALL_ICONS.map((slug) => {
                 const order = picked.indexOf(slug);
                 const isPicked = order !== -1;
@@ -184,9 +231,9 @@ export function LoginOverlay({
                     aria-label={
                       isPicked
                         ? `${slug}, chosen as icon ${order + 1}. Activate to remove.`
-                        : `Choose ${slug}`
+                        : `Choose ${slug} as icon ${picked.length + 1}`
                     }
-                    className={`relative grid aspect-square place-items-center rounded-xl border-2 bg-white text-2xl transition-transform ${
+                    className={`relative grid aspect-square place-items-center rounded-xl border-2 bg-white text-2xl leading-none transition-transform ${
                       isPicked
                         ? "scale-105"
                         : full
@@ -195,11 +242,17 @@ export function LoginOverlay({
                     }`}
                     style={isPicked ? { borderColor: CYAN } : undefined}
                   >
-                    <span aria-hidden>{emojiFor(slug)}</span>
+                    <span aria-hidden className="emoji-optical">
+                      {emojiFor(slug)}
+                    </span>
                     {isPicked && (
+                      // Centred on the corner point itself rather than nudged
+                      // by eye — half the badge sits inside the tile and half
+                      // outside, on both axes, which is the only offset that
+                      // reads as deliberate at any tile size.
                       <span
                         aria-hidden
-                        className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold text-white"
+                        className="absolute right-0 top-0 grid h-5 w-5 -translate-y-1/2 translate-x-1/2 place-items-center rounded-full text-[11px] font-bold leading-none text-white"
                         style={{ background: CYAN }}
                       >
                         {order + 1}
@@ -232,9 +285,7 @@ export function LoginOverlay({
             wizard, which threw away the modal and the program behind it —
             somebody who pressed it to save an event came back to neither. */}
         <p className="mt-6 text-base text-muted">
-          {mode === "login"
-            ? "First time here?"
-            : "Already have an account?"}{" "}
+          {mode === "login" ? "Don't have an account yet?" : "Been here before?"}{" "}
           <button
             onClick={() => {
               setMode(mode === "login" ? "signup" : "login");
