@@ -201,7 +201,7 @@ export function LoginOverlay({
                       }}
                     >
                       {slug ? (
-                        <span aria-hidden className="emoji-optical">
+                        <span aria-hidden className="glyph-centred">
                           {emojiFor(slug)}
                         </span>
                       ) : (
@@ -242,7 +242,7 @@ export function LoginOverlay({
                     }`}
                     style={isPicked ? { borderColor: CYAN } : undefined}
                   >
-                    <span aria-hidden className="emoji-optical">
+                    <span aria-hidden className="glyph-centred">
                       {emojiFor(slug)}
                     </span>
                     {isPicked && (
