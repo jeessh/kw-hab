@@ -24,7 +24,7 @@ export const ACCEPTED_LABEL = "JPG, PNG or WebP";
  */
 export const IMAGE_SIZING = {
   /** Event covers: the photo is the card. */
-  cover: { minEdge: 512, idealEdge: 1000 },
+  cover: { minEdge: 512, idealEdge: 1028 },
   /** Organization logos: recommended 512, and small marks are still usable. */
   logo: { minEdge: 128, idealEdge: 512 },
 } as const;
