@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, api } from "@/lib/api";
 import { ALL_ICONS, emojiFor } from "@/lib/icons";
@@ -50,6 +50,17 @@ export function LoginOverlay({
   const [mismatch, setMismatch] = useState(false);
 
   const nameReady = first.trim() !== "" && last.trim() !== "";
+
+  // It already closes on a backdrop click; Escape is the same gesture without a
+  // mouse, and this is a sign-in overlay somebody may well have opened by
+  // accident. Not stopping propagation, matching the menus elsewhere here.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
 
   function togglePick(slug: string) {
     setError(null);

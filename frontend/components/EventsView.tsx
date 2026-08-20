@@ -962,6 +962,10 @@ export function EventsView({
         onToggleInterest={toggleInterest}
         signedIn={signedIn}
         onSignIn={() => {
+          // Close this panel on the way out. The sign-in overlay covers it, so
+          // leaving it open left a hidden dialog still listening for Escape —
+          // which then stole focus to a trigger nobody could see.
+          setA11yOpen(false);
           setAuthFor(null);
           setAuthOpen(true);
         }}
@@ -973,6 +977,9 @@ export function EventsView({
         reveal={settingsReveal}
         onClose={closeSettings}
         onSignIn={() => {
+          // Same reason as the accessibility panel above: otherwise Escape
+          // closes this panel behind the overlay instead of the overlay.
+          closeSettings();
           setAuthFor(null);
           setAuthOpen(true);
         }}
