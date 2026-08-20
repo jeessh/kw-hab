@@ -89,7 +89,9 @@ def get_current_host(request: Request, db: Session = Depends(get_db)) -> Host:
     if not p or p.get("role") != "host":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in as a host")
     host = db.get(Host, uuid.UUID(p["sub"]))
-    if not host:
+    # Same reason as get_current_user: tokens last a week, so an archived
+    # organizer would otherwise keep publishing until theirs expired.
+    if not host or host.deleted_at is not None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
     return host
 

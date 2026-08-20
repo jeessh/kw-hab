@@ -262,7 +262,11 @@ def run() -> None:
         hosts = [
             h
             for email in HOSTS
-            if (h := db.query(Host).filter(Host.email == email).first())
+            if (
+                h := db.query(Host)
+                .filter(Host.email == email, Host.deleted_at.is_(None))
+                .first()
+            )
         ]
         if not hosts:
             print("No hosts found — run `python -m app.seed` first.")

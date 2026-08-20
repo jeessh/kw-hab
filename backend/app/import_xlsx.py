@@ -83,7 +83,12 @@ def run(path: str) -> None:
 
     db = SessionLocal()
     try:
-        hosts = {h.name.strip().lower(): h for h in db.query(Host).all()}
+        # Live accounts only — importing onto a retired one would file real
+        # programming under an organization that has left.
+        hosts = {
+            h.name.strip().lower(): h
+            for h in db.query(Host).filter(Host.deleted_at.is_(None)).all()
+        }
         existing = {
             (t.strip().lower(), s.date() if s else None)
             for t, s in db.query(Event.title, Event.starts_at).all()

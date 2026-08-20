@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -9,7 +10,6 @@ from app.api.deps import get_current_host, get_db, require_admin
 from app.core.security import hash_password
 from app.models.event import Event
 from app.models.host import Host
-from app.models.invite import HostInvite
 from app.schemas.host import (
     HostCreate,
     HostOut,
@@ -59,8 +59,8 @@ def update_me(
 
 def _event_counts(db: Session) -> dict[uuid.UUID, int]:
     """Live programs owned, per host, in one query (not one per row). Archived
-    ones are excluded — this count warns a superadmin what a removal will
-    reassign, and reassigning an archived program isn't worth a warning."""
+    ones are excluded — this count warns a superadmin how much programming a
+    removal will retire, and an already-archived program isn't part of that."""
     rows = (
         db.query(Event.host_id, func.count(Event.id))
         .filter(Event.deleted_at.is_(None))
@@ -71,13 +71,25 @@ def _event_counts(db: Session) -> dict[uuid.UUID, int]:
 
 
 def _superadmin_count(db: Session) -> int:
-    return db.query(func.count(Host.id)).filter(Host.is_admin.is_(True)).scalar() or 0
+    """Live superadmins. Counting archived ones would let the guard below wave
+    through the removal of the last person who can still sign in."""
+    return (
+        db.query(func.count(Host.id))
+        .filter(Host.is_admin.is_(True), Host.deleted_at.is_(None))
+        .scalar()
+        or 0
+    )
 
 
 @router.get("", response_model=list[HostWithCountsOut])
 def list_hosts(_: Host = Depends(require_admin), db: Session = Depends(get_db)):
     counts = _event_counts(db)
-    hosts = db.query(Host).order_by(Host.created_at.asc()).all()
+    hosts = (
+        db.query(Host)
+        .filter(Host.deleted_at.is_(None))
+        .order_by(Host.created_at.asc())
+        .all()
+    )
     return [
         HostWithCountsOut(
             id=h.id,
@@ -99,7 +111,13 @@ def create_host(
     db: Session = Depends(get_db),
 ):
     email = body.email.strip().lower()
-    if db.query(Host).filter(Host.email == email).first():
+    # Live accounts only — an archived one releases its address (see the
+    # uq_hosts_email_live partial index), so an agency can be set up again.
+    if (
+        db.query(Host)
+        .filter(Host.email == email, Host.deleted_at.is_(None))
+        .first()
+    ):
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
     host = Host(
         name=body.name,  # already trimmed and non-blank by the schema
@@ -127,7 +145,7 @@ def update_host(
     db: Session = Depends(get_db),
 ):
     host = db.get(Host, host_id)
-    if not host:
+    if not host or host.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin not found")
 
     # Every field is optional, and an explicit null means "leave it alone" just
@@ -178,7 +196,7 @@ def delete_host(
     db: Session = Depends(get_db),
 ):
     host = db.get(Host, host_id)
-    if not host:
+    if not host or host.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin not found")
     if host.id == current.id:
         raise HTTPException(
@@ -192,18 +210,20 @@ def delete_host(
             "This is the last superadmin — promote someone else first.",
         )
 
-    # Host.events cascades delete-orphan, so deleting the row would take every
-    # program this account ever published with it — programs members may already
-    # have saved. Hand them to the acting superadmin instead; removing a person
-    # should not remove the community's programming.
-    db.query(Event).filter(Event.host_id == host.id).update(
-        {Event.host_id: current.id}, synchronize_session=False
-    )
-    db.expire(host, ["events"])
-    # Invitations they issued reference them. The invite outlives its issuer
-    # perfectly well, so detach rather than block the removal or cascade it.
-    db.query(HostInvite).filter(HostInvite.invited_by == host.id).update(
-        {HostInvite.invited_by: None}, synchronize_session=False
-    )
-    db.delete(host)
+    # Archive both the account and its programming, rather than deleting the
+    # row. Host.events cascades delete-orphan, so db.delete(host) would destroy
+    # every program this agency ever published — including ones members have
+    # saved and attendance the agency reports to funders.
+    #
+    # The programs stay attributed to the agency that ran them. They used to be
+    # reassigned to whichever superadmin pressed the button, which kept them
+    # visible but filed KW Hab's name on another agency's work, and left the
+    # acting superadmin owning programs they had never seen. Retiring the
+    # organizer retires their programming with them; the rows, the counts and
+    # the attribution all survive.
+    now = datetime.now(timezone.utc)
+    db.query(Event).filter(
+        Event.host_id == host.id, Event.deleted_at.is_(None)
+    ).update({Event.deleted_at: now}, synchronize_session=False)
+    host.deleted_at = now
     db.commit()

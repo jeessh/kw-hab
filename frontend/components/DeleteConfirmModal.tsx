@@ -31,8 +31,8 @@ export function DeleteConfirmModal({
   return (
     <Modal title={`Delete “${event.title}”?`} onClose={onClose}>
       <p className="mt-3 text-lg text-ink">
-        This permanently removes the program and everyone&apos;s attendance for
-        it. This cannot be undone.
+        This takes the program off the member feed. Attendance already recorded
+        still counts, so the numbers you report stay right.
       </p>
 
       {error && (

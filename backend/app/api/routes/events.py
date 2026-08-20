@@ -379,6 +379,16 @@ def restore_event(
     targets = _series_targets(db, event, series, include_archived=True)
     if not host.is_admin and any(e.host_id != host.id for e in targets):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your event")
+    # Removing an organizer archives their programming with them. Restoring one
+    # of those would put it back in the member feed under an account nobody can
+    # sign into and that no longer appears in the console — half a removal.
+    # Reachable only by a superadmin calling the API directly, since Undo is
+    # offered on a program the same person just archived.
+    if event.host is not None and event.host.deleted_at is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "That organizer's account was removed. Restore the account first.",
+        )
     for target in targets:
         target.deleted_at = None
     db.commit()

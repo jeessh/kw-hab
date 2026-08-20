@@ -46,7 +46,13 @@ def create_invite(
     """Issue an invitation. Returns the token once — it isn't stored in the
     clear and can't be shown again."""
     email = body.email.strip().lower()
-    if db.query(Host).filter(Host.email == email).first():
+    # Live accounts only. An archived one has released its address, which is
+    # what lets an agency that was removed be invited back under it.
+    if (
+        db.query(Host)
+        .filter(Host.email == email, Host.deleted_at.is_(None))
+        .first()
+    ):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "That email already has an account."
         )
