@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserSignup(BaseModel):
@@ -44,3 +44,12 @@ class HostLogin(BaseModel):
     # accounts created before EmailStr was enforced on signup.
     email: str
     password: str
+
+
+class HostForgot(BaseModel):
+    email: EmailStr
+
+
+class HostReset(BaseModel):
+    token: str
+    password: str = Field(min_length=8)
