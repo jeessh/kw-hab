@@ -320,6 +320,11 @@ def me(request: Request, db: Session = Depends(get_db)):
         user = db.get(User, uuid.UUID(payload["sub"]))
         if not user or user.deleted_at is not None:
             return {"authenticated": False}
+        # And the same again for a re-issued key: this is the gate the UI reads,
+        # so it has to agree with deps._key_still_current or the member is shown
+        # a signed-in app in which nothing works.
+        if payload.get("cv") != credential_fingerprint(user.password_hash):
+            return {"authenticated": False}
     if role == "host":
         # Tokens last a week and carry whatever is_admin was true at login, so a
         # demoted superadmin would keep seeing superadmin UI until it expired.
