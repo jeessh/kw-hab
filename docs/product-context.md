@@ -135,8 +135,12 @@ current build is Vercel + Supabase. Flag before any infrastructure commitment.
 
 ## 4. Requirement register
 
-Status assessed against the code as of 2026-08-13. IDs are stable — cite them in
-PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
+Status assessed against the code as of **2026-08-20**. IDs are stable — cite
+them in PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
+
+> Re-assess before trusting a row. The 2026-08-13 pass went stale within days —
+> a dozen rows marked ❌ or 🟡 had shipped and the register still said otherwise,
+> which is worse than having no register.
 
 ### Platform prerequisites
 
@@ -147,19 +151,19 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | P-2a | FK-level protection for attendance | ❌ | `event_attendees` FKs are still `ON DELETE CASCADE`. Unreachable from the API now that nothing hard-deletes, but a manual `DELETE` in the Supabase SQL editor would still destroy history. Switch to `RESTRICT`. |
 | P-3 | Rate limiting on auth | ✅ | Postgres-backed failure counters on all three sign-in routes (10/15min per identity, 200/15min per IP). Failures only, and success clears the identity key but deliberately not the shared IP key. Account **creation** is still uncapped — see P-3a. |
 | P-3a | Cap on account creation | ❌ | `/auth/user` can mint accounts without limit. Any cap low enough to matter risks cutting off a caregiver onboarding a group in one sitting, so it needs a chosen number. |
-| P-4 | Feed returns all events | 🟡 | `/events` defaults to 100, caps at 200 (`events.py:86`); the member feed requests no params (`app/events/page.tsx:16`) and sorts client-side, so past row 100 the "personalization never filters" invariant is silently false. |
+| P-4 | Feed returns all events | ✅ | The feed pages through `/events?limit&offset` (`app/page.tsx`) until the server stops returning rows, so the 200 cap no longer truncates it. Worth remembering the cap exists when writing any *other* caller — 273 occurrences is already past it. |
 
 ### Accounts & auth
 
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
-| A-1 | Member sign-in without email/password | ✅ | 3-icon key. Genuinely good for the barrier profile. |
+| A-1 | Member sign-in without email/password | ✅ | Icon key, now **two** icons (`ICON_COUNT`) picked in turn. Genuinely good for the barrier profile. |
 | A-2 | **A wrong icon tap does not destroy the account** | ✅ | Returns `mode: "conflict"`; creating a second account under an existing name now needs an explicit `create_new`. Note the conflict response is a new username-enumeration oracle — mild, and the reason P-3 mattered. |
-| A-3 | Member account recovery | ❌ | No reset, hint, or lookup path in FE or BE. |
+| A-3 | Member account recovery | ✅ | `POST /users/{id}/reset-key` (superadmin) issues a new key; the console lists every member's current one. Member-side, the sign-in conflict offers "I forgot my icons" instead of dead-ending between "try again" and "I'm new" — the latter strands the account they own. Staff-mediated by necessity: there is no second factor on a member account to prove anything with, and revealing an icon would cut a 132-combination keyspace to 12. |
 | A-4 | Account creation without typing | ❌ | `/signup` gates step 1 on two typed name fields (`signup/page.tsx:117`). "Can't type" is a stated barrier. Steps 2-4 are tap-only and fine. |
-| A-5 | NPO staff password recovery | ❌ | Only path is a superadmin `PATCH /hosts/{id}`. A locked-out sole superadmin is unrecoverable without DB access. |
-| A-6 | ~~Multi-user organizations~~ | — | **Out of scope per §3.5** — one shared login per agency. One residual bug still worth fixing: removing an organizer reassigns their programs to the acting superadmin (`hosts.py:156`), i.e. one agency's programming lands with another agency. Should archive with the account instead. |
-| A-7 | NPO approval before posting | ✅ | Settled by §3.2 — fixed superadmin creates organizer accounts, approval happens off-platform, no self-serve signup. Current implementation is correct. Remaining nice-to-haves only: forced password change on first login, and a contact path for an applicant who lands on `/host` (today it's a dead end). |
+| A-5 | NPO staff password recovery | ✅ | Email reset — `/auth/host/forgot` → `/auth/host/reset`, single-use, one-hour expiry, token stored as a hash. `forgot` answers identically whether or not the address exists, so it can't enumerate the agencies. Needs the `SMTP_*` env group to actually send; unset means the link is logged, not mailed. |
+| A-6 | ~~Multi-user organizations~~ | — | **Out of scope per §3.5** — one shared login per agency. The residual bug is fixed: removing an organizer now archives the account and its programs together, so the programming stays attributed to the agency that ran it instead of moving to whoever pressed Remove. |
+| A-7 | NPO approval before posting | ✅ | Settled by §3.2 — fixed superadmin creates organizer accounts, approval happens off-platform, no self-serve signup. Current implementation is correct. Invitations (`/invites`) now let a superadmin hand over account creation without ever knowing the password. `/host` tells an applicant to ask a superadmin and links to password reset, so it is no longer a dead end. Remaining nice-to-have: forced password change on an account created directly rather than by invitation. |
 | A-8 | Caregiver-linked accounts (support, not proxy) | ❌ | No user-to-user relation of any kind. |
 
 ### Discovery
@@ -173,9 +177,9 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | D-3 | Filter by organization | ✅ | Present — but this is the one axis the old calendar already had and that stakeholders called insufficient. |
 | D-4 | Filter by proximity / location | ❌ | `location` is one free-text string. No coordinates, no radius, no map. Stakeholders liked a map-oriented competitor. |
 | D-5 | Filter by time / date range | ❌ | No date filter in the member UI. |
-| D-6 | Filter by age group / audience | ❌ | No field. The live calendar already tags `youth`. |
+| D-6 | Filter by age group / audience | 🟡 | The fields exist and hosts fill them — `min_age`, `max_age`, `is_youth`, with a Youth/Everyone tag in the form. Nothing in the member UI displays or filters on them yet, so it is collected but not usable. |
 | D-7 | "Who else is going?" / social | ❌ | Attendance is private; no social layer. Stakeholders asked for sharing a calendar with known people, with approval. |
-| D-8 | Accessibility-need matching | ❌ | Hosts tick 6 accessibility chips, but nothing in the member UI renders `accessibility_tags`, and signup never collects `accessibility_prefs` — so `matchScore`'s access loop always iterates an empty array. Write-only data. |
+| D-8 | Accessibility-need matching | ❌ | Worse than the last pass recorded. Signup still never collects `accessibility_prefs`, nothing in the member UI renders `accessibility_tags` — and the host form no longer offers the six chips at all: `payloadFrom` emits only `free`. So `matchScore`'s access loop scores an empty array against a nearly empty one. **This is the largest gap between what the code appears to do and what it does**, and it is squarely in the platform's stated purpose. Either wire both ends or delete the loop. |
 | D-9 | Standardized event detail format | 🟡 | Schema is standardized; enforcement is not — see N-1. |
 
 ### Registration
@@ -183,12 +187,12 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
 | R-1 | **`registration_mode` + `registration_url`** | ✅ | Both on `Event`; validation shared by create and update, and update checks the merged row. The link is required only in the external+signup state. |
-| R-2 | The four registration states drive distinct member behaviour | 🟡 | Done on the **event page** (`components/EventActions.tsx`): external sign-up leads with the outbound link, everything else saves. The one-card carousel still treats every state identically. |
+| R-2 | The four registration states drive distinct member behaviour | ✅ | The carousel and the detail modal both branch on `requires_signup` × `registration_mode` now, matching the event page. |
 | R-2a | Member knows they are leaving the platform | ✅ | The destination hostname sits under the button — says "you are leaving" more plainly than a sentence about it, and costs four words. |
 | R-3 | Browse without an account; save is the gate | ✅ | `/events` is open; `AuthGate` gone. Saving redirects to sign-in carrying the program, and the save completes on return. Accessibility modes work signed-out (session-only); topics and the saved list need an account. |
-| R-4 | Un-save | ❌ | `DELETE /events/{id}/attend` exists; no UI calls it. |
+| R-4 | Un-save | ✅ | Wired in `EventsView`, and re-pressing save on a saved program un-saves it. |
 | R-5 | Saves actually persist | ✅ | A failed save rolls the badge back and announces it, instead of claiming a program is saved that the server never recorded. |
-| R-6 | Capacity limits (incl. higher-needs allocation) | ❌ | No field; `attend_event` does no count check. |
+| R-6 | Capacity limits | ✅ | `events.capacity`, set in the host form ("Spaces — leave blank for no limit"), enforced in `attend_event` behind a row lock so two people racing for the last place can't both get it. Higher-needs allocation specifically is still not modelled. |
 | R-7 | Reminder before the event | ❌ | Members have **no email/phone field at all**. Decided 2026-08-13: contact details are **optional and added after signup**, never required — icon sign-in stays contact-free. Schema is cheap; the mail sender and scheduler are the real cost and can land later. |
 | R-8 | Add to Google Calendar / .ics | ❌ | Nothing. |
 
@@ -196,12 +200,12 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 
 | ID | Requirement | Status | Where it stands |
 | --- | --- | --- | --- |
-| N-1 | **Mandatory, standardized fields with example text** | ❌ | Create requires title + category only and says so: "Two things are required. Everything else is optional." Server requires only `title`. Description — the known-bad field — is optional and hidden in a collapsed accordion. |
-| N-2 | Edit offers the same fields as create | ❌ | Edit drops gallery and accessibility tags entirely (create-only, permanently unchangeable) and uses a **free-text category input** (`EditEventModal.tsx:92`) whose placeholder suggests off-taxonomy values — the exact thing CLAUDE.md forbids. Clearing it writes `null`. `ends_at` is unreachable from any form. |
+| N-1 | **Mandatory, standardized fields with example text** | ✅ | Name, date, time, location, description, image and activity type are all required and marked; the form says what is still missing rather than failing silently. Description — the known-bad field — is required and up front, with a worked example as placeholder text. |
+| N-2 | Edit offers the same fields as create | ✅ | `EditEventModal` is gone; one `EventForm` backs both, so they cannot drift apart again, and the free-text category input went with it. |
 | N-3 | Can't edit another org's events | ✅ | Enforced in API (403) and UI ("View only"). |
 | N-4 | Superadmin can manage any event + accounts | ✅ | With self-demotion/self-deletion guards intact. |
-| N-5 | Deletion restricted to superadmins | ❌ | Any owner can delete. See §3.2 — recommend archive instead. |
-| N-6 | Success confirmation after publish/edit/delete | 🟡 | Publishing confirms and hands over a share link. **Edit and delete are still silent** — they just reload the table. |
+| N-5 | Deletion restricted to superadmins | ✅ | `delete_event` is superadmin-only, archives rather than destroys, and takes `series` so removing a repeating program doesn't leave fifteen dates behind. |
+| N-6 | Success confirmation after publish/edit/delete | 🟡 | Publishing confirms and hands over a share link; deleting confirms **and offers Undo**. Editing is still silent. |
 | N-7 | Copy shareable link on create | ✅ | Copy link on every row plus on the publish confirmation; browser-read origin, prompt fallback. |
 | N-8 | Reschedule notifies affected members | ❌ | No notification of any kind. |
 
@@ -224,11 +228,11 @@ PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | X-1 | Many input paths to one action | ✅ | Six routes to save (drag, 2s hold, 1s ArrowDown, button, voice, head-dwell), all through shared handlers. The strongest thing in the build. |
 | X-2 | Text-to-speech / voice commands / head tracking | ✅ | All real. TTS↔mic duplex handling is a good detail. |
 | X-3 | ~~Text-size toggle~~ | — | **Out of scope per §3.4** — browser/OS zoom already does this. The source-of-truth doc claims it as built; it never existed. Remove the claim rather than build it. |
-| X-4 | Keyboard navigation | 🟡 | Window-level handler doesn't check `e.target` (`EventsView.tsx:670`): ArrowDown on the org `<select>` is swallowed *and* starts a save-hold; ArrowDown dismisses the Saved panel instead of scrolling it. |
-| X-5 | Screen-reader support | 🟡 | Card changes announce nothing; a11y menu is `role="menu"` with invalid children and no focus trap/Escape; page `<h1>` changes per card. Modals and the Saved panel do have correct traps. |
+| X-4 | Keyboard navigation | ✅ | The window-level handler checks `e.target` before acting, so typing in a field or operating a select no longer triggers the feed's shortcuts. |
+| X-5 | Screen-reader support | 🟡 | Card changes now announce (X-8), and the a11y menu dropped the bogus `role="menu"` — it holds headings and switches, not menu items — and closes on Escape. Still open: the page `<h1>` changes per card. Modals and the Saved panel have correct traps. |
 | X-6 | ~~Contrast / colour controls~~ | — | **Out of scope as a feature per §3.4.** Noted for the UI pass only: 7 of 8 category banners fail 4.5:1 with white text, and `pop #FF7A4D` (every error message) is 2.58:1. A palette fix when the design is touched, not a toggle to build. |
 | X-7 | Honour the OS reduced-motion signal | 🟡 | In scope — the animations are JS-driven, so the native `prefers-reduced-motion` signal doesn't reach them. Wired in the main paths but no `MotionConfig`; the calibration halo pulses infinitely at 2.6× scale. |
-| X-8 | Announce card changes | ❌ | Arrowing through the whole feed is silent — the custom carousel has no live region. Platform-exclusive: no native affordance covers it. |
+| X-8 | Announce card changes | ✅ | A polite live region announces each card as it becomes current — title, date, location, and "n of m" — plus save/un-save outcomes and topic changes. |
 
 ---
 

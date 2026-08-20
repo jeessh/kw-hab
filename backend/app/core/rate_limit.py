@@ -1,8 +1,9 @@
 """Failure-counting rate limits for the auth endpoints.
 
-The member credential is a name plus an ordered 3-icon key — roughly 59k
-combinations. That is small enough to exhaust from a script, so the sign-in
-routes need a ceiling on how fast someone can guess.
+The member credential is a name plus an ordered icon key — with ICON_COUNT at
+two, 132 combinations for a given name. That is small enough to exhaust from a
+script in seconds, so the sign-in routes need a ceiling on how fast someone can
+guess, and this file is what stands between the icon door and a sweep.
 
 Two deliberate design choices:
 

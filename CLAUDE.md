@@ -6,13 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Accessible, needs-first community-programming platform for Kitchener-Waterloo
 nonprofits (hackathon build). Members discover/attend programs via a tactile,
-one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password**.
+one-card-at-a-time UI; sign-in is a memorable **2-icon key that IS the password**
+(`ICON_COUNT` in `app/core/icons.py` — it has been 1 and 3 before, so read it
+rather than assuming).
 
 ## Layout
 - `backend/` — FastAPI + SQLAlchemy. **Source of truth for the API.**
 - `frontend/` — Next.js (App Router) + Tailwind + Framer Motion. Two distinct
-  surfaces: the member app (`/`, `/signup`, `/events`) and the staff admin
-  console (`/host/*`). They deliberately do not look alike — see below.
+  surfaces: the member app (`/` is the feed, `/signup`, and the public
+  per-program pages at `/events/{id}`) and the staff admin console (`/host/*`).
+  They deliberately do not look alike — see below. There is no `/events` index
+  route — the feed is the home page, and `/events` 307s to it.
 - `vercel.json` (root) — single-origin deploy: `/api/*` → backend, `/*` → frontend.
 
 ## Run locally
@@ -50,6 +54,12 @@ uses `settings.ROOT_PATH` (`""` local, `/api` prod).
 
 Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
 `NEXT_PUBLIC_API_URL=/api`, `FRONTEND_ORIGIN`, `ROOT_PATH=/api`.
+
+Organizer password reset needs SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+`SMTP_PASSWORD`, `MAIL_FROM` (plus `SMTP_STARTTLS` / `SMTP_SSL`). **Unset means
+no mail is sent and the reset link is written to the log instead** — right for
+local dev, never acceptable in production. `FRONTEND_ORIGIN` is what the link in
+that mail is built from, so a wrong value produces links nobody can open.
 
 ## Frontend architecture
 
@@ -89,13 +99,25 @@ Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
 ## Gotchas / conventions
 - **Passwords use `bcrypt` directly — do NOT reintroduce `passlib`** (crashes on
   bcrypt ≥4.1). Hashes are standard `$2b$`.
-- **The 3-icon set is the credential** → generate with `secrets` (see
-  `app/core/icons.py`), never `random`. Keyspace is only ~12k combos; add login
-  rate-limiting before treating this as production auth.
+- **The icon set is the credential** → generate with `secrets` (see
+  `app/core/icons.py`), never `random`. Two ordered icons from twelve is 132
+  combinations *per name*, which is why the Postgres-backed rate limiting in
+  `app/core/rate_limit.py` is load-bearing rather than a nicety.
+- **Icon allocation is scoped to the username**, matching the
+  `uq_users_username_icons` constraint and the way sign-in resolves a member —
+  name first, then credential. Searching globally would run 132 pairs out at 132
+  members across all agencies and start refusing accounts for no reason.
+- **Sessions are bound to the credential that opened them.** Tokens carry `cv`,
+  a fingerprint of the password hash (`security.credential_fingerprint`), and
+  `deps` re-checks it on every request. So re-issuing a member's icons or
+  resetting an organizer's password ends the sessions opened with the old one
+  instead of leaving them live for the week a token lasts. Every place that
+  mints a token must pass `cred_hash`, and `/auth/me` must apply the same check
+  as the API — otherwise the UI shows a signed-in app where nothing works.
 - `JWT_SECRET` has no default — the app fails fast if it's unset.
 - DB engine uses `NullPool` + `prepare_threshold=None` for pgbouncer compatibility.
-- **Nothing is deleted; things are archived.** Events and members carry
-  `deleted_at`, un-saving flips `event_attendees.status` to `removed` rather than
+- **Nothing is deleted; things are archived.** Events, members *and organizer
+  accounts* carry `deleted_at`, un-saving flips `event_attendees.status` to `removed` rather than
   dropping the row, and the `attendees` relationships deliberately have no
   `delete-orphan` cascade. Attendance counts are what nonprofits put in grant
   applications, so they have to outlive the event and the account. Every read
@@ -118,13 +140,33 @@ Required prod env: `DATABASE_URL` (:6543), `JWT_SECRET`, `COOKIE_SECURE=true`,
   these, and it reads `is_admin` from the DB, not the token.
 
 **There is no host signup route.** It existed and was open to the internet;
-superadmins now create organizer accounts via `POST /hosts`, and `/host` is
-sign-in only. Don't add one back.
+superadmins now create organizer accounts via `POST /hosts` or by issuing an
+invitation (`/invites`), and `/host` is sign-in only. Don't add one back.
+
+## Account recovery
+Neither door can be recovered the way a normal login would be, and they work
+differently from each other:
+- **Members** have no email or phone — the icons *are* the password. So recovery
+  is a superadmin re-issuing the key (`POST /users/{id}/reset-key`) and reading
+  it out; the console's members table lists every key. On the member side, the
+  sign-in conflict offers "I forgot my icons" rather than dead-ending, since the
+  alternatives ("try again", "I'm new") both fail the member who genuinely can't
+  remember — the second by stranding the account they own.
+- **Organizers** reset by email (`/auth/host/forgot` → `/auth/host/reset`),
+  single-use and expiring in an hour. `forgot` answers identically whether or
+  not the address has an account, so it can't be used to enumerate which
+  agencies are on the platform — keep it that way, including on the error paths.
+  This exists because the sole superadmin previously had no way back in at all.
 
 Two invariants worth knowing before touching `app/api/routes/hosts.py`:
-- **Removing an admin reassigns their programs to the acting superadmin.**
-  `Host.events` cascades `delete-orphan`, so a plain `db.delete(host)` would
-  destroy programs members have already saved.
+- **Removing an admin archives the account and its programs.** `Host.events`
+  cascades `delete-orphan`, so a plain `db.delete(host)` would destroy programs
+  members have already saved. It used to reassign them to the acting superadmin
+  instead, which kept them visible but filed one agency's work under another's
+  name — so both now get `deleted_at` and the programs stay attributed to the
+  organization that ran them. `hosts.email` is unique over live rows only
+  (`uq_hosts_email_live`), so an archived account releases its address and an
+  agency that left can be invited back under it.
 - **A superadmin can't demote or delete themselves.** That refusal is what keeps
   at least one superadmin in the system — you can only remove someone else's
   rights, so your own survive.

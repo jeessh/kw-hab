@@ -7,7 +7,8 @@ Self-contained briefing for spinning up additional agents. Read this + root
 
 Accessible, needs-first community-programming platform for KW nonprofits
 (hackathon build). Members discover/attend programs via a tactile,
-one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password**.
+one-card-at-a-time UI; sign-in is a memorable **2-icon key that IS the
+password** (`ICON_COUNT`; it has been 1 and 3 before, so read it).
 
 - `backend/` — FastAPI + SQLAlchemy. **Source of truth for the API.**
 - `frontend/` — Next.js (App Router) + Tailwind + Framer Motion.
@@ -28,13 +29,14 @@ one-card-at-a-time UI; sign-in is a memorable **3-icon key that IS the password*
   `main.py` honors `settings.ROOT_PATH` (`""` local, `/api` prod).
 
 ### What's NOT done
-- **Deploy not verified against a live build.** The root `vercel.json` `services`
-  schema is settled (it's the documented pattern for shipping Next.js + FastAPI
-  as one project). What's outstanding is a real build plus dashboard setup that
-  can't be done from the repo: Framework = Services, Root Directory = repo root,
-  and the backend env vars.
 - The **AI feedback interview** tab (conversational feedback capture) is designed
   but deliberately descoped — see §2.
+- The open functional gaps are tracked as a status register in
+  `docs/product-context.md` §4 — work from that rather than from this file,
+  which only carries setup and architecture.
+
+**Deployment is done.** <https://the-belonging-collective.vercel.app> is live and
+public; see §5.
 
 ## 2. Where the product actually landed
 
@@ -65,32 +67,49 @@ need a sibling hook, not that one.
   uses `credentials:"include"`, base = `NEXT_PUBLIC_API_URL ?? http://localhost:8000`.
 - **`GET /api/auth/me`** → `{authenticated, role:"user"|"host", is_admin, id}` — the
   single source for the gate.
+- Tokens carry **`cv`**, a fingerprint of the password hash they were issued
+  against, re-checked on every request. Changing a credential ends the sessions
+  opened with the old one. Every token-minting call must pass `cred_hash`, and
+  `/auth/me` applies the same check — a gate that disagrees with the API shows a
+  signed-in app in which nothing works.
 
 ### Current routes
-- `frontend/app/events/page.tsx` → `<EventsView/>` (member card UI,
-  `components/EventsView.tsx`, behind `<AuthGate/>`).
-- `frontend/app/host/*` → admin console: `/host` (sign-in), `/host/events`,
-  `/host/events/new`, and the superadmin-only `/host/admins` + `/host/members`.
+- `frontend/app/page.tsx` → `<EventsView/>` (member card UI,
+  `components/EventsView.tsx`). The feed is the **home page**, open signed-out;
+  `AuthGate` is gone and there is no `/events` index (it 307s to `/`).
+- `frontend/app/events/[id]/page.tsx` → the public, server-rendered program page.
+- `frontend/app/host/*` → admin console: `/host` (sign-in), `/host/forgot` +
+  `/host/reset/[token]` (password reset), `/host/invite/[token]`,
+  `/host/events`, `/host/events/new`, and the superadmin-only `/host/admins` +
+  `/host/users` (`/host/members` redirects to it).
 - `frontend/app/signup/page.tsx` → member account creation.
 
 ### Relevant API (backend/app/api/routes/)
-- `auth.py`: `POST /auth/signup/user` (name → 3-icon key), `/login/user`,
-  `/user` (unified login-or-signup), `/login/host`, `/logout`, `GET /auth/me`.
+- `auth.py`: `POST /auth/signup/user` (name → icon key), `/login/user`,
+  `/user` (unified login-or-signup, returns `mode`), `/login/host`, `/logout`,
+  `GET /auth/me`, plus organizer password reset — `/auth/host/forgot`,
+  `GET /auth/host/reset/{token}`, `POST /auth/host/reset`.
   **There is no `/signup/host`** — superadmins create organizer accounts.
 - `users.py`: `GET /users/me`, `PATCH /users/me`, `GET /users`,
-  `PATCH /users/{id}`, `DELETE /users/{id}`.
+  `PATCH /users/{id}`, `DELETE /users/{id}`, and superadmin-only
+  `POST /users/{id}/reset-key` (issue a member a new icon key — the whole of
+  member account recovery).
 - `hosts.py`: `GET /hosts/me`, plus superadmin-only
-  `GET|POST /hosts` and `PATCH|DELETE /hosts/{id}`.
-- `events.py`, `attendance.py`.
+  `GET|POST /hosts` and `PATCH|DELETE /hosts/{id}`. `DELETE` archives the
+  account **and** its programs.
+- `invites.py`, `events.py`, `attendance.py`.
 
 ### Data model (backend/app/models/, backend/alembic/versions/)
 - `users`: id, first_name, last_name, username (firstname_lastname, NOT unique),
-  password_hash, auth_type, **icons text[] UNIQUE**, created_at, plus
+  password_hash, auth_type, **icons text[]** — unique only in combination with
+  `username` (`uq_users_username_icons`), not on its own — `deleted_at`,
+  created_at, plus
   `accessibility_prefs` / `interest_categories` (text[]) and the three
   accessibility-mode toggles. The interest columns drive the member feed's
   ordering.
 - `hosts`: `is_admin = false` is a plain admin (own programs only);
-  `is_admin = true` is a superadmin (any program, plus member and admin accounts).
+  `is_admin = true` is a superadmin (any program, plus member and admin
+  accounts). `deleted_at` archives; `email` is unique over live rows only.
 - `events`: category (**picked from `lib/categories.ts`, not free text** — the
   feed matches member interests against it), accessibility_tags text[]
   (e.g. wheelchair_accessible, sensory_friendly, childcare_provided, free),
@@ -111,41 +130,54 @@ The prefs columns and the wizard described in earlier drafts of this doc are
   `event.category`, `+1` per accessibility pref present in
   `event.accessibility_tags`, ties broken by the server's original index so the
   feed never reshuffles between renders.
+- **The accessibility half of that is currently dead code.** Nothing collects
+  `accessibility_prefs` — signup asks for interests only — and the host form
+  emits just `free`, so the loop scores an empty array against a nearly empty
+  one. Tracked as D-8 in `docs/product-context.md`; either wire both ends or
+  drop the loop, but don't read the code as evidence the feature works.
 - The topic list lives in `frontend/lib/categories.ts` as `CATEGORIES`
-  (`Cooking, Food, Hangout, Sports, Games, Arts, Music, Advice`). It is the
-  **single** source for the signup chips, the member topic stepper, and the host
-  category picker. Adding a second list, or letting hosts type a category by
+  (`Education, Social, Recreation, Support Group, Cooking, Fundraising, Youth
+  Programs, Wellness, Fitness, Arts & Crafts, Music, Games, Sports`). It comes
+  from the real agency data — the earlier hackathon guess (`Cooking, Food,
+  Hangout, Sports, Games, Arts, Music, Advice`) could file only 6 of 37 real
+  events, and survives only as `LEGACY_STYLES` so old rows keep a stable colour.
+  It is the **single** source for the signup chips, the member topic stepper,
+  and the host category picker. Adding a second list, or letting hosts type a category by
   hand, silently breaks matching — a program with an off-list category can never
   match anyone.
 
-## 5. Deployment (the one genuinely open thread)
+## 5. Deployment — live
 
-The `vercel.json` `services` schema is settled and the project **builds green** —
-production deployments exist for `master`, with the Python backend lambda
-bundling correctly. What's broken is configuration, not code:
+<https://the-belonging-collective.vercel.app> is public and serving real data.
+Both blockers this section used to list were **dashboard settings**, so nothing
+in the repo records the fix — verify against the deployment, not the code:
 
-- **Vercel Authentication (SSO)** is enabled for all deployments except custom
-  domains. Every `*.vercel.app` URL 302s to a login wall, so nobody outside the
-  Vercel account can open the app. Attach a custom domain, or disable protection
-  for production.
-- **`DATABASE_URL` points at the wrong pooler.** Runtime logs show
-  `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` against
-  `...pooler.supabase.com:5432`. That's the **session** pooler; serverless needs
-  the **:6543 transaction** pooler. This surfaced as a 500 on `POST /auth/user`
-  — i.e. signup is dead on the deployed app.
+- SSO protection is now scoped to **preview** deployments only, so production is
+  reachable without a Vercel login. Preview URLs still 302 to the login wall;
+  that is deliberate, so don't share one with the agencies.
+- `DATABASE_URL` uses the **:6543 transaction** pooler. The earlier
+  `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` was the :5432
+  **session** pooler, which serverless can't use — and it was visible only in
+  runtime logs, never in the build.
 
-Other required backend env vars: `JWT_SECRET`, `COOKIE_SECURE=true`,
-`FRONTEND_ORIGIN`, `ROOT_PATH=/api`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`.
+Required backend env: `JWT_SECRET`, `COOKIE_SECURE=true`, `FRONTEND_ORIGIN`,
+`ROOT_PATH=/api`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, plus the `SMTP_*` /
+`MAIL_FROM` group if organizer password-reset mail should actually send.
 Dashboard side: Framework = **Services**, Root Directory = **repo root**.
 
-Once both are fixed, smoke-test `/api/health`, `/api/events`, and a real signup
-against the deployed URL — the DB failure above was only visible in runtime
-logs, not in the build.
+`curl https://the-belonging-collective.vercel.app/api/health` before assuming
+any of this has regressed — a stale "it only runs locally" belief here has
+already cost one wrong diagnosis.
 
 ## 6. Landmines (don't relearn the hard way)
 - Do NOT reintroduce `passlib`. Use `bcrypt` directly (`app/core/security.py`).
-- The 3-icon set is the credential → generate with `secrets`, never `random`.
-  Keyspace ~12k combos; add login rate-limiting before calling this production auth.
+- The icon set is the credential → generate with `secrets`, never `random`.
+  Two ordered icons from twelve is 132 combinations per name, so the
+  Postgres-backed limiter in `app/core/rate_limit.py` is load-bearing.
+- Allocation of icons is scoped **per username**, matching the real constraint.
+  Don't "fix" it back to a global search — that exhausts at 132 members.
+- Anything minting a token must pass `cred_hash`, or that account is signed out
+  on its very next request.
 - `DATABASE_URL`: **:6543 transaction pooler** for serverless/Vercel, **:5432 session
   pooler** for local. Prefix must be `postgresql+psycopg://`.
 - RLS is intentionally off; all DB access goes through the FastAPI backend. Never
