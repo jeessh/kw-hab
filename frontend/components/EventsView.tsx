@@ -35,6 +35,7 @@ import { HeadCursor } from "@/components/HeadCursor";
 import { CalibrationOverlay } from "@/components/CalibrationOverlay";
 import { eventToSpeech } from "@/lib/eventSpeech";
 import { SavedEvents } from "@/components/SavedEvents";
+import { SELECTABLE_TAGS } from "@/lib/accessibility";
 import { CATEGORIES } from "@/lib/categories";
 import { oneCardPerProgram, personalizedFeed } from "@/lib/feed";
 import {
@@ -633,6 +634,28 @@ export function EventsView({
     (v: boolean) => void setPref({ tts_enabled: v }),
     [setPref],
   );
+
+  // Same shape as toggleInterest, and the same reason for setI(0): a need
+  // reorders the feed harder than a topic does, so leaving the cursor where it
+  // was would drop the member onto an unrelated program.
+  const toggleAccessPref = useCallback(
+    (slug: string, label: string) => {
+      const chosen = meRef.current?.accessibility_prefs ?? [];
+      const adding = !chosen.includes(slug);
+      void setPref({
+        accessibility_prefs: adding
+          ? [...chosen, slug]
+          : chosen.filter((c) => c !== slug),
+      });
+      setI(0);
+      setSrMessage(
+        adding
+          ? `Added ${label}. Showing programs that offer it first.`
+          : `Removed ${label}. Showing your best matches from the start.`,
+      );
+    },
+    [setPref],
+  );
   const toggleVoice = useCallback(
     (v: boolean) => void setPref({ voice_commands_enabled: v }),
     [setPref],
@@ -960,6 +983,8 @@ export function EventsView({
         lastHeard={lastHeard}
         interests={me?.interest_categories ?? []}
         onToggleInterest={toggleInterest}
+        accessPrefs={me?.accessibility_prefs ?? []}
+        onToggleAccessPref={toggleAccessPref}
         signedIn={signedIn}
         onSignIn={() => {
           // Close this panel on the way out. The sign-in overlay covers it, so
@@ -1260,6 +1285,8 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   lastHeard,
   interests,
   onToggleInterest,
+  accessPrefs,
+  onToggleAccessPref,
   signedIn,
   onSignIn,
 }: {
@@ -1279,6 +1306,9 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   lastHeard: string;
   interests: string[];
   onToggleInterest: (label: string) => void;
+  /** Slugs from lib/accessibility — what the member needs a program to offer. */
+  accessPrefs: string[];
+  onToggleAccessPref: (slug: string, label: string) => void;
   signedIn: boolean;
   onSignIn: () => void;
 }) {
@@ -1392,6 +1422,43 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
             {interests.length === 0
               ? "Nothing chosen yet"
               : `${interests.length} chosen: ${interests.join(", ")}`}
+          </p>
+
+          {/* Needs, not tastes — so they sort harder than topics do (see
+              ACCESS_WEIGHT in lib/feed). Still only sorting: nothing is hidden
+              from anyone, and most programs have said nothing either way. */}
+          <h2 className="mt-6 font-display text-lg font-bold text-ink">
+            What you need
+          </h2>
+          <p className="mt-0.5 text-sm text-muted">
+            Programs that offer these come first.
+          </p>
+          <div
+            role="group"
+            aria-label="Things you need a program to offer"
+            className="mt-3 flex flex-wrap gap-2"
+          >
+            {SELECTABLE_TAGS.map(({ slug, label, emoji }) => {
+              const chosen = accessPrefs.includes(slug);
+              return (
+                <button
+                  key={slug}
+                  type="button"
+                  onClick={() => onToggleAccessPref(slug, label)}
+                  aria-pressed={chosen}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition-transform hover:scale-[1.04]"
+                  style={{ borderColor: chosen ? "#35CDEE" : "#E2DEF0" }}
+                >
+                  <span aria-hidden>{emoji}</span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="sr-only" role="status" aria-live="polite">
+            {accessPrefs.length === 0
+              ? "Nothing chosen yet"
+              : `${accessPrefs.length} chosen`}
           </p>
           </>
           )}

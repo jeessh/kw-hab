@@ -6,6 +6,10 @@ import { ImageDrop } from "@/components/ImageDrop";
 import { checkPostingLink } from "@/lib/postingLink";
 import { CATEGORIES } from "@/lib/categories";
 import {
+  SELECTABLE_TAGS,
+  isDerivedTag,
+} from "@/lib/accessibility";
+import {
   PAID_MODELS,
   centsFrom,
   dollarsFrom,
@@ -41,6 +45,13 @@ export type EventFormValues = {
   requiresSignup: boolean;
   isVirtual: boolean;
   isYouth: boolean;
+  /**
+   * What the program offers. Holds only the non-derived tags: `free` and
+   * `no_registration` are written from the cost and drop-in answers instead.
+   * Anything already on the event that this build has no chip for rides along
+   * untouched rather than being dropped on the next save.
+   */
+  accessibilityTags: string[];
 };
 
 export const EMPTY_FORM: EventFormValues = {
@@ -68,6 +79,7 @@ export const EMPTY_FORM: EventFormValues = {
   requiresSignup: false,
   isVirtual: false,
   isYouth: false,
+  accessibilityTags: [],
 };
 
 export function valuesFromEvent(event: Event): EventFormValues {
@@ -106,6 +118,11 @@ export function valuesFromEvent(event: Event): EventFormValues {
     requiresSignup: event.requires_signup,
     isVirtual: event.is_virtual ?? false,
     isYouth: event.is_youth ?? false,
+    // Derived ones are rebuilt on save from the answers that own them, so they
+    // are dropped here rather than round-tripped and duplicated.
+    accessibilityTags: (event.accessibility_tags ?? []).filter(
+      (t) => !isDerivedTag(t),
+    ),
   };
 }
 
@@ -114,8 +131,16 @@ export function payloadFrom(v: EventFormValues) {
   const priceTemplate = templateFor(v.pricingModel);
   const startsAt =
     v.date && v.time ? new Date(`${v.date}T${v.time}`).toISOString() : null;
-  const accessibility_tags: string[] = [];
-  if (v.pricingModel === "free") accessibility_tags.push("free");
+  // What the host ticked, plus the two that are answered elsewhere on this
+  // form. Deduped because an event edited before those answers owned the tags
+  // may already carry one.
+  const accessibility_tags = Array.from(
+    new Set([
+      ...v.accessibilityTags,
+      ...(v.pricingModel === "free" ? ["free"] : []),
+      ...(v.requiresSignup ? [] : ["no_registration"]),
+    ]),
+  );
   return {
     title: v.title.trim(),
     description: v.description.trim(),
@@ -789,6 +814,48 @@ export function EventForm({
             value={values.isYouth}
             onChange={(v) => set("isYouth", v)}
           />
+        </div>
+      </fieldset>
+
+      {/* Not required, and deliberately not a yes/no pair like the tags above:
+          leaving one unticked has to mean "not saying", never "no". A venue
+          wrongly marked inaccessible costs somebody the program. */}
+      <fieldset className="mt-8">
+        <legend className="font-display text-xl font-bold text-ink">
+          What does it offer?
+        </legend>
+        <p className="mt-1 text-base text-muted">
+          Tick only what you can vouch for. Anything left unticked just means
+          you haven&apos;t said.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {SELECTABLE_TAGS.map(({ slug, label, emoji }) => {
+            const on = values.accessibilityTags.includes(slug);
+            return (
+              <button
+                key={slug}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  set(
+                    "accessibilityTags",
+                    on
+                      ? values.accessibilityTags.filter((t) => t !== slug)
+                      : [...values.accessibilityTags, slug],
+                  )
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-base transition-colors ${
+                  on
+                    ? "border-transparent text-ink"
+                    : "border-[#B9B7C4] text-ink hover:bg-slate-50"
+                }`}
+                style={on ? { background: CYAN } : undefined}
+              >
+                <span aria-hidden>{emoji}</span>
+                {label}
+              </button>
+            );
+          })}
         </div>
       </fieldset>
 

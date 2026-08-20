@@ -169,7 +169,22 @@ def run(path: str) -> None:
                         recurrence=label,
                         series_index=i,
                         series_total=len(dates),
-                        accessibility_tags=[],
+                        # Derived from the two answers above, the same way
+                        # the host form derives them (EventForm.payloadFrom).
+                        # The spreadsheet says nothing about step-free access
+                        # or interpretation, so those stay unsaid — but cost
+                        # and drop-in are already known here, and leaving them
+                        # off meant the whole imported catalogue matched
+                        # nobody's stated needs.
+                        accessibility_tags=(
+                            (["free"] if model in ("free", "donation") else [])
+                            + (
+                                []
+                                if "required"
+                                in str(rec["Registration Type"]).lower()
+                                else ["no_registration"]
+                            )
+                        ),
                     )
                 )
                 made += 1

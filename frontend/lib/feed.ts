@@ -1,12 +1,22 @@
 import type { Event } from "@/lib/api";
 import { sameCategory } from "@/lib/categories";
 
-// Weights for the personalized ordering. A topic the member picked outranks any
-// single accessibility match, but several accessibility matches can still lift
-// an off-topic program — someone who needs a wheelchair-accessible, childcare-
-// provided program needs that more than they need it to be about cooking.
+// Weights for the personalized ordering.
+//
+// An access match outranks a topic match, which is the other way round from how
+// this started. A topic is a preference — a wheelchair-accessible venue is not.
+// Ranking it below the topic meant a cooking class up a flight of stairs came
+// out above a step-free session for a member who uses a wheelchair, which is
+// the wrong answer to a question about what they can attend rather than what
+// they might enjoy.
+//
+// Ordering is all this can do about it: the feed sorts and never hides (see
+// below), so a program that meets none of someone's needs still appears. Making
+// needs *remove* programs would have to be the member's own explicit filter,
+// and that is a separate decision — not least because most programs have no
+// tags at all yet, so filtering today would empty the feed.
 const TOPIC_WEIGHT = 3;
-const ACCESS_WEIGHT = 1;
+const ACCESS_WEIGHT = 5;
 
 /**
  * The two profile fields that affect ordering. Taken as plain arrays rather
