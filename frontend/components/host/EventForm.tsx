@@ -111,6 +111,7 @@ export function valuesFromEvent(event: Event): EventFormValues {
 
 /** What the API wants, from what the form holds. */
 export function payloadFrom(v: EventFormValues) {
+  const priceTemplate = templateFor(v.pricingModel);
   const startsAt =
     v.date && v.time ? new Date(`${v.date}T${v.time}`).toISOString() : null;
   const accessibility_tags: string[] = [];
@@ -142,12 +143,22 @@ export function payloadFrom(v: EventFormValues) {
         : Number(v.occurrenceCount),
     repeat_forever: v.frequency !== "once" && v.repeatForever,
     pricing_model: v.pricingModel,
-    price_cents: centsFrom(v.priceAmount),
-    price_group_size: v.priceGroupSize.trim()
-      ? Number(v.priceGroupSize)
-      : null,
-    price_sessions: v.priceSessions.trim() ? Number(v.priceSessions) : null,
-    price_note: v.priceNote.trim() || null,
+    // Only the parts the chosen shape actually has. The form keeps whatever was
+    // typed against the other shapes, so somebody comparing "per group" with
+    // "one fee for the whole run" doesn't lose their figures switching back and
+    // forth — but sending those along would file a group size on a program that
+    // doesn't charge per group, and nothing downstream would reject it.
+    price_cents: priceTemplate.needsAmount ? centsFrom(v.priceAmount) : null,
+    price_group_size:
+      priceTemplate.needsGroup && v.priceGroupSize.trim()
+        ? Number(v.priceGroupSize)
+        : null,
+    price_sessions:
+      priceTemplate.needsSessions && v.priceSessions.trim()
+        ? Number(v.priceSessions)
+        : null,
+    price_note:
+      v.pricingModel === "custom" ? v.priceNote.trim() || null : null,
     // Free is a consequence of the pricing model, not a separate answer.
     // Letting them disagree is how a "Free" badge ends up on a $40 course.
     is_free: v.pricingModel === "free",
