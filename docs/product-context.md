@@ -205,7 +205,7 @@ them in PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | N-3 | Can't edit another org's events | ✅ | Enforced in API (403) and UI ("View only"). |
 | N-4 | Superadmin can manage any event + accounts | ✅ | With self-demotion/self-deletion guards intact. |
 | N-5 | Deletion restricted to superadmins | 🟡 | Half true, and the other half is deliberate. Archiving rather than destroying is done, and `series` means removing a repeating program doesn't leave fifteen dates behind. But `delete_event` depends on `get_current_host`, not `require_admin`: an owner may retire their own program **while nobody has saved it**, and is refused once somebody has. That matches §3.8's working resolution — NPOs need to fix their own mistakes — so the requirement as worded is what's out of date, not the code. Worth re-wording the requirement rather than restricting the route. |
-| N-6 | Success confirmation after publish/edit/delete | 🟡 | Publishing confirms and hands over a share link; deleting confirms **and offers Undo**. Editing is still silent. |
+| N-6 | Success confirmation after publish/edit/delete | ✅ | Publishing confirms and hands over a share link, deleting confirms and offers Undo, and editing confirms by name. `UndoToast` only draws the Undo button when there is something to undo — the copy-link confirmation used to offer one that did nothing. |
 | N-7 | Copy shareable link on create | ✅ | Copy link on every row plus on the publish confirmation; browser-read origin, prompt fallback. |
 | N-8 | Reschedule notifies affected members | ❌ | No notification of any kind. |
 
@@ -218,7 +218,7 @@ them in PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | M-3 | Admin analytics dashboard | ❌ | No route, no endpoint, no charting dep. |
 | M-4 | Event postings trend | ❌ | `created_at` exists; nothing aggregates it. |
 | M-5 | **Per-event public URL** | ✅ | `/events/[id]`, server-rendered and public. |
-| M-6 | SEO / metadata / OG cards | 🟡 | Per-event title/description/canonical, OG + Twitter cards with the cover image, JSON-LD `Event`, `metadataBase`, sitemap and robots. Still missing: a favicon, and an OG image for pages with no cover. |
+| M-6 | SEO / metadata / OG cards | 🟡 | Per-event title/description/canonical, OG + Twitter cards with the cover image, JSON-LD `Event`, `metadataBase`, sitemap, robots, and a favicon (`app/icon.svg`). Still missing: an OG image for pages with no cover. |
 | M-7 | Indexable event content | 🟡 | Event pages are in the HTML and in the sitemap, and `/events` is now reachable signed-out. The carousel itself is still client-rendered, so its content isn't in the server HTML — fine while the per-event pages carry indexing. |
 
 ### Accessibility
@@ -229,9 +229,9 @@ them in PRs and discussion. ✅ built · 🟡 partial · ❌ missing.
 | X-2 | Text-to-speech / voice commands / head tracking | ✅ | All real. TTS↔mic duplex handling is a good detail. |
 | X-3 | ~~Text-size toggle~~ | — | **Out of scope per §3.4** — browser/OS zoom already does this. The source-of-truth doc claims it as built; it never existed. Remove the claim rather than build it. |
 | X-4 | Keyboard navigation | ✅ | The window-level handler checks `e.target` before acting, so typing in a field or operating a select no longer triggers the feed's shortcuts. |
-| X-5 | Screen-reader support | 🟡 | Card changes now announce (X-8), and the a11y menu dropped the bogus `role="menu"` for `role="dialog"` — it holds headings and switches, not menu items. Still open: **it doesn't close on Escape** (the only Escape handler is gated on `view === "settings"`, and the global keydown handler returns early while `a11yOpen`, so the key is swallowed) — a backdrop click is the only way out. Also the page `<h1>` changes per card. Modals and the Saved panel do have correct traps. |
+| X-5 | Screen-reader support | 🟡 | Card changes announce (X-8); the a11y menu dropped the bogus `role="menu"` for `role="dialog"`, closes on Escape and returns focus to its trigger; the sign-in overlay closes on Escape too, and the panels that launch it close on the way out rather than lingering behind it. Still open: the page `<h1>` changes per card. Modals and the Saved panel have correct traps. |
 | X-6 | ~~Contrast / colour controls~~ | — | **Out of scope as a feature per §3.4.** Noted for the UI pass only: 7 of 8 category banners fail 4.5:1 with white text, and `pop #FF7A4D` (every error message) is 2.58:1. A palette fix when the design is touched, not a toggle to build. |
-| X-7 | Honour the OS reduced-motion signal | 🟡 | In scope — the animations are JS-driven, so the native `prefers-reduced-motion` signal doesn't reach them. Wired in the main paths but no `MotionConfig`; the calibration halo pulses infinitely at 2.6× scale. |
+| X-7 | Honour the OS reduced-motion signal | 🟡 | In scope — the animations are JS-driven, so the native `prefers-reduced-motion` signal doesn't reach them on its own. Wired in the main paths, and the calibration halo (the one unending animation, on the screen you must hold still for) now holds a steady glow instead of pulsing to 2.6×. Still no `MotionConfig` at the root, so each new animation has to remember on its own. |
 | X-8 | Announce card changes | ✅ | A polite live region announces each card as it becomes current — title, date, location, and "n of m" — plus save/un-save outcomes and topic changes. |
 
 ---
