@@ -181,6 +181,19 @@ export function missingRequired(v: EventFormValues): string[] {
 
 /* ---------------- pieces ---------------- */
 
+/**
+ * One labelled control.
+ *
+ * The border goes around the control and nothing else. It used to enclose the
+ * label as well, which made the box as tall as the label was long — so "Spaces
+ * (leave blank for no limit)" wrapped to two lines and stood taller than the
+ * two fields beside it, and the same happened to the pair under "Does it
+ * repeat?". Rows of fields are meant to line up.
+ *
+ * The asterisk moved inside the label for the same reason it belongs there: it
+ * used to float in a column of its own to the left of the box, which in a row
+ * of two fields left it sitting between them, marking neither.
+ */
 function Labelled({
   label,
   required,
@@ -191,28 +204,27 @@ function Labelled({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2">
-      <span
-        aria-hidden
-        className={`mt-4 w-2 text-lg font-bold ${
-          required ? "text-[#E8318A]" : "text-transparent"
-        }`}
-      >
-        *
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted">
+        {label}
+        {required && (
+          <span aria-hidden className="ml-1 font-bold text-[#E8318A]">
+            *
+          </span>
+        )}
+        {required && <span className="sr-only"> (required)</span>}
       </span>
-      <label className="flex-1 rounded-2xl border border-[#B9B7C4] px-4 py-2.5 focus-within:border-accent">
-        <span className="block text-xs font-medium uppercase tracking-wide text-muted">
-          {label}
-          {required && <span className="sr-only"> (required)</span>}
-        </span>
+      <span className="block rounded-xl border border-[#B9B7C4] px-4 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
         {children}
-      </label>
-    </div>
+      </span>
+    </label>
   );
 }
 
+// py-3 rather than padding on the wrapper, so every control is the same height
+// whatever it is — input, select and textarea disagree about their own.
 const fieldClass =
-  "mt-0.5 w-full bg-transparent text-lg text-ink outline-none placeholder:text-muted/70";
+  "w-full bg-transparent py-3 text-lg text-ink outline-none placeholder:text-muted/70";
 
 /** A two-choice pill. The design's tags are all either/or. */
 function TagPair({
@@ -311,7 +323,7 @@ export function EventForm({
           />
         </Labelled>
 
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[240px] flex-1">
             <Labelled label="Date" required>
               <input
@@ -375,7 +387,7 @@ export function EventForm({
           />
         </Labelled>
 
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[180px] flex-1">
             <Labelled label="Spaces (leave blank for no limit)">
               <input
@@ -604,6 +616,72 @@ export function EventForm({
                 );
               })}
             </div>
+
+            {/* What the chosen shape still needs. missingRequired has always
+                asked for these — a paid program with no amount was refused
+                with "Still needed: price" — but nothing ever rendered a field
+                to put one in, so every paid program was unpostable. */}
+            {(() => {
+              const t = templateFor(values.pricingModel);
+              if (!t.needsAmount && values.pricingModel !== "custom") return null;
+              return (
+                <div className="mt-4 flex flex-wrap items-end gap-4">
+                  {t.needsAmount && (
+                    <div className="min-w-[150px]">
+                      <Labelled label="Price" required>
+                        <input
+                          inputMode="decimal"
+                          value={values.priceAmount}
+                          onChange={(e) => set("priceAmount", e.target.value)}
+                          className={fieldClass}
+                          placeholder="$12.50"
+                        />
+                      </Labelled>
+                    </div>
+                  )}
+                  {t.needsGroup && (
+                    <div className="min-w-[180px]">
+                      <Labelled label="People it covers" required>
+                        <input
+                          type="number"
+                          min={2}
+                          value={values.priceGroupSize}
+                          onChange={(e) => set("priceGroupSize", e.target.value)}
+                          className={fieldClass}
+                          placeholder="4"
+                        />
+                      </Labelled>
+                    </div>
+                  )}
+                  {t.needsSessions && (
+                    <div className="min-w-[180px]">
+                      <Labelled label="Dates it covers" required>
+                        <input
+                          type="number"
+                          min={2}
+                          value={values.priceSessions}
+                          onChange={(e) => set("priceSessions", e.target.value)}
+                          className={fieldClass}
+                          placeholder="8"
+                        />
+                      </Labelled>
+                    </div>
+                  )}
+                  {values.pricingModel === "custom" && (
+                    <div className="min-w-[280px] flex-1">
+                      <Labelled label="Describe the cost" required>
+                        <input
+                          value={values.priceNote}
+                          onChange={(e) => set("priceNote", e.target.value)}
+                          className={fieldClass}
+                          placeholder="$5 suggested, pay what you can"
+                        />
+                      </Labelled>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
