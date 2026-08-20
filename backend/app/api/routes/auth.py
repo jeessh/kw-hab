@@ -284,7 +284,11 @@ def login_host(
     id_key = f"host:{email}"
     enforce_rate_limit(db, {id_key: IDENTITY_LIMIT, ip_key: IP_LIMIT})
 
-    host = db.query(Host).filter(Host.email == email).first()
+    host = (
+        db.query(Host)
+        .filter(Host.email == email, Host.deleted_at.is_(None))
+        .first()
+    )
     if not host or not verify_password(body.password, host.password_hash):
         record(db, id_key, ip_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")

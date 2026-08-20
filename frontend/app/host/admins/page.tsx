@@ -348,13 +348,13 @@ function AdminsTable({ session }: { session: Session }) {
         <RemoveAdminModal
           admin={removing}
           onClose={() => setRemoving(null)}
-          onRemoved={(name, moved) => {
+          onRemoved={(name, retired) => {
             setRemoving(null);
             setNotice(
-              moved > 0
-                ? `Removed ${name}. ${moved} ${
-                    moved === 1 ? "program" : "programs"
-                  } moved to you.`
+              retired > 0
+                ? `Removed ${name}. ${retired} ${
+                    retired === 1 ? "program" : "programs"
+                  } retired with the account.`
                 : `Removed ${name}.`,
             );
             void load();
@@ -656,7 +656,7 @@ function RemoveAdminModal({
 }: {
   admin: AdminAccount;
   onClose: () => void;
-  onRemoved: (name: string, moved: number) => void;
+  onRemoved: (name: string, retired: number) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -687,8 +687,9 @@ function RemoveAdminModal({
             {admin.event_count}{" "}
             {admin.event_count === 1 ? "program" : "programs"}
           </strong>{" "}
-          will move to your account and stay visible to members. Nothing is
-          deleted from the feed.
+          will leave the member feed. Nothing is deleted — the programs stay
+          filed under {admin.name}, and attendance already recorded still
+          counts.
         </p>
       ) : (
         <p className="mt-3 text-sm text-slate-600">
