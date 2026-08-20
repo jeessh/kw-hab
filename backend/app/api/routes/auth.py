@@ -335,7 +335,10 @@ def me(request: Request, db: Session = Depends(get_db)):
         # The DB is the authority (require_admin already reads it) — read it here
         # too so the UI matches what the API will actually allow.
         host = db.get(Host, uuid.UUID(payload["sub"]))
-        if not host:
+        # Archived too: get_current_host now refuses these, so reporting the
+        # session as live here would hand a removed organizer a console in
+        # which every request fails.
+        if not host or host.deleted_at is not None:
             return {"authenticated": False}
         is_admin = host.is_admin
     return {
