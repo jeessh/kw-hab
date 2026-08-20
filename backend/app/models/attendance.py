@@ -21,12 +21,17 @@ class Attendance(Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        # RESTRICT, not CASCADE: attendance is what agencies report to funders,
+        # so a stray DELETE against users must fail rather than quietly take
+        # the history with it. Nothing in the API hard-deletes any more, but
+        # the SQL editor is right there.
+        ForeignKey("users.id", ondelete="RESTRICT"),
         primary_key=True,
     )
     event_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("events.id", ondelete="CASCADE"),
+        # RESTRICT for the same reason — see the user_id comment above.
+        ForeignKey("events.id", ondelete="RESTRICT"),
         primary_key=True,
     )
     created_at: Mapped[datetime] = mapped_column(
