@@ -524,7 +524,10 @@ export const UndoToast = memo(function UndoToast({
 }: {
   message: string;
   tone: "posted" | "deleted";
-  onUndo: () => void;
+  /** Omitted for things that can't be undone — the button is then not drawn.
+      It used to be required, so the copy-link confirmation passed an empty
+      function and staff got an Undo that did nothing. */
+  onUndo?: () => void;
   onDismiss: () => void;
 }) {
   return (
@@ -535,12 +538,14 @@ export const UndoToast = memo(function UndoToast({
     >
       <p className="text-xl text-ink">{message}</p>
       <div className="mt-3 flex gap-3">
-        <button
-          onClick={onUndo}
-          className="rounded-lg bg-[#D9D9D9] px-4 py-2 font-medium text-ink transition-colors hover:bg-[#CDCDCD]"
-        >
-          Undo
-        </button>
+        {onUndo && (
+          <button
+            onClick={onUndo}
+            className="rounded-lg bg-[#D9D9D9] px-4 py-2 font-medium text-ink transition-colors hover:bg-[#CDCDCD]"
+          >
+            Undo
+          </button>
+        )}
         <button
           onClick={onDismiss}
           className="rounded-lg px-4 py-2 font-medium text-muted hover:text-ink"

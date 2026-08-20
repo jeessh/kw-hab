@@ -25,7 +25,8 @@ export function EditEventModal({
 }: {
   event: Event;
   onClose: () => void;
-  onSaved: () => void;
+  /** Given the saved title, so the page can confirm which program changed. */
+  onSaved: (title: string) => void;
 }) {
   const [values, setValues] = useState<EventFormValues>(() =>
     valuesFromEvent(event),
@@ -41,7 +42,7 @@ export function EditEventModal({
         method: "PATCH",
         body: JSON.stringify(payloadFrom(values)),
       });
-      onSaved();
+      onSaved(values.title.trim() || event.title);
     } catch (e) {
       setError(apiMessage(e, "Couldn't save this event. Please try again."));
       setBusy(false);
