@@ -308,7 +308,11 @@ def delete_event(
     host: Host = Depends(get_current_host),
     db: Session = Depends(get_db),
 ):
-    """Archive the program. Superadmins only.
+    """Archive the program.
+
+    Superadmins always; an owner may retire their own program while nobody has
+    saved it, and is refused once somebody has. "Superadmins only" is what this
+    said before the owner path was added, and it has been wrong since.
 
     `series=true` archives every remaining date of a repeating program, not just
     the one identified. The console lists a repeating program as one row, so

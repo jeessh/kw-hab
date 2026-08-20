@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field
 class UserSignup(BaseModel):
     first_name: str
     last_name: str
-    # The member's chosen, ordered 3-icon key. If omitted, the server allocates
-    # a random unique set (legacy behaviour).
+    # The member's chosen, ordered icon key (ICON_COUNT of them). If omitted,
+    # the server allocates a free set (legacy behaviour).
     icons: list[str] | None = None
     # Optional custom password. If omitted, the icon password is used by default.
     custom_password: str | None = Field(None, min_length=8)
@@ -17,7 +17,7 @@ class UserSignup(BaseModel):
 
 class UserAuth(BaseModel):
     """Unified member entry: log in if the name + icon key matches an existing
-    account, otherwise create it. The 3-icon set is the credential."""
+    account, otherwise create it. The icon set is the credential."""
 
     first_name: str
     last_name: str

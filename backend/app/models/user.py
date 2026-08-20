@@ -10,7 +10,7 @@ from app.db.session import Base
 
 class User(Base):
     """A community member. The sign-in key is the full name PLUS the ordered
-    3-icon set, so uniqueness is on (username, icons): people can share a name,
+    icon set, so uniqueness is on (username, icons): people can share a name,
     and even the same icons, as long as the two together differ."""
 
     __tablename__ = "users"

@@ -11,8 +11,10 @@ and hold it (2s), or hold the ↓ arrow key (1.5s) — all resolve to the same "
 into the slot → you're attending" moment, no forms. Arrows move between programs;
 the person icon opens settings.
 
-Sign-up asks only for first and last name; the app generates a 3-icon key
-(e.g. 🌳🐱🍎 = `tree_cat_apple`) as the password.
+Sign-up asks only for first and last name; the member then picks a 2-icon key
+(e.g. 🌳🐱 = `tree_cat`), and those icons *are* the password. Forgotten it? Staff
+re-issue a new key from the admin console — there is no email on a member
+account to send anything to.
 
 ## Stack
 - **Frontend:** Next.js (App Router) · Tailwind · Framer Motion — see [`frontend/`](frontend)
@@ -62,6 +64,7 @@ Production env vars:
 | backend  | `ROOT_PATH` | `/api` |
 | backend  | `FRONTEND_ORIGIN` | deployed URL (for CORS) |
 | frontend | `NEXT_PUBLIC_API_URL` | `/api` |
+| backend  | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `MAIL_FROM` | organizer password-reset mail. **Unset = nothing is sent and the reset link is logged instead** |
 
 ## Roles
 - **Members** — discover + attend programs (simple icon sign-in)
@@ -69,6 +72,8 @@ Production env vars:
 - **Superadmins** — admins who can also edit any program and manage member and
   admin accounts
 
-Organizer accounts are created by a superadmin from the admin console; there is
-no self-serve host sign-up. Removing an admin hands their programs to the
-superadmin doing the removal rather than deleting them.
+Organizer accounts are created by a superadmin from the admin console, or by
+invitation; there is no self-serve host sign-up. Organizers who forget their
+password reset it by email. Removing an admin archives the account and its
+programs together — nothing is deleted, and the programs stay attributed to the
+organization that ran them rather than moving to whoever pressed Remove.
