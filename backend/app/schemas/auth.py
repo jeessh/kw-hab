@@ -44,3 +44,16 @@ class HostLogin(BaseModel):
     # accounts created before EmailStr was enforced on signup.
     email: str
     password: str
+
+
+class HostForgot(BaseModel):
+    # Plain str, matching HostLogin and for the same reason: accounts predating
+    # EmailStr on signup would be rejected here before the lookup ever ran. An
+    # organizer who can't sign in because of a legacy address is precisely who
+    # this endpoint exists for, so refusing to look them up defeats it.
+    email: str
+
+
+class HostReset(BaseModel):
+    token: str
+    password: str = Field(min_length=8)

@@ -21,6 +21,19 @@ class Settings(BaseSettings):
     SUPABASE_SECRET_KEY: str = ""
     SUPABASE_IMAGE_BUCKET: str = "event-images"
 
+    # Outbound mail. Used only by the organizer password reset — members have no
+    # address on their accounts. Unset (the default) means no mail is sent and
+    # the reset link is logged instead, which is right for local development
+    # and must never be the state in production.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    # STARTTLS on 587 is the common case; SMTP_SSL is for implicit TLS on 465.
+    SMTP_STARTTLS: bool = True
+    SMTP_SSL: bool = False
+    MAIL_FROM: str = ""
+
     # Path prefix the backend is served under. Empty in local dev (the frontend
     # calls http://localhost:8000 directly); "/api" on Vercel, where the service
     # rewrite forwards the /api-prefixed path and backend/index.py strips it

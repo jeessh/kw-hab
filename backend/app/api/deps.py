@@ -39,6 +39,11 @@ def _payload(request: Request) -> dict | None:
     return decode_token(token) if token else None
 
 
+def payload_cv(payload: dict) -> str | None:
+    """The credential fingerprint a token was issued with, if it has one."""
+    return payload.get("cv")
+
+
 def _key_still_current(payload: dict, user: User) -> bool:
     """Whether this token was issued against the member's current icon key.
 
@@ -93,6 +98,11 @@ def get_current_host(request: Request, db: Session = Depends(get_db)) -> Host:
     # organizer would otherwise keep publishing until theirs expired.
     if not host or host.deleted_at is not None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
+    # As for members: the token carries a fingerprint of the password it was
+    # issued against, so resetting a password ends the sessions opened with the
+    # old one instead of leaving them live for the week a token lasts.
+    if payload_cv(p) != credential_fingerprint(host.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in again")
     return host
 
 

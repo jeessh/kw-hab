@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
 
@@ -86,6 +87,15 @@ export default function HostAuthPage() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        <p className="mt-4 text-sm">
+          <Link
+            href="/host/forgot"
+            className="font-semibold text-accent underline underline-offset-2"
+          >
+            Forgot your password?
+          </Link>
+        </p>
 
         <p className="mt-6 border-t border-slate-200 pt-4 text-sm text-slate-500">
           Need an account? Ask a superadmin at your organization to create one.

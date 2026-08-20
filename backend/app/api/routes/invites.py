@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_host, get_db, require_admin, set_auth_cookie
 from app.core.rate_limit import IP_LIMIT, client_key, enforce, record
-from app.core.security import create_access_token, hash_password
+from app.core.security import (
+    create_access_token,
+    credential_fingerprint,
+    hash_password,
+)
 from app.models.host import Host
 from app.models.invite import HostInvite
 
@@ -179,6 +183,12 @@ def accept_invite(
         )
     db.refresh(host)
     set_auth_cookie(
-        response, create_access_token(host.id, "host", is_admin=host.is_admin)
+        response,
+        create_access_token(
+            host.id,
+            "host",
+            is_admin=host.is_admin,
+            cred_hash=credential_fingerprint(host.password_hash),
+        ),
     )
     return {"id": str(host.id), "email": host.email, "name": host.name}
