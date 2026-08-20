@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -23,12 +24,35 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(sub: str, role: str, is_admin: bool = False) -> str:
-    """role is 'user' or 'host'. Admins are hosts with is_admin=True."""
+def credential_fingerprint(password_hash: str) -> str:
+    """A short, non-reversible tag for the credential a token was issued
+    against.
+
+    Carried in the token as `cv` and re-checked on every request, so changing
+    somebody's credential ends the sessions opened with the old one. The bcrypt
+    hash never leaves the server — this is a digest of a digest, and it only
+    ever gets compared with one computed the same way.
+    """
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:16]
+
+
+def create_access_token(
+    sub: str,
+    role: str,
+    is_admin: bool = False,
+    cred_hash: str | None = None,
+) -> str:
+    """role is 'user' or 'host'. Admins are hosts with is_admin=True.
+
+    `cred_hash` binds the token to the credential in force when it was issued —
+    see credential_fingerprint. Member tokens always carry it.
+    """
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
     payload = {"sub": str(sub), "role": role, "is_admin": is_admin, "exp": expire}
+    if cred_hash is not None:
+        payload["cv"] = cred_hash
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALG)
 
 

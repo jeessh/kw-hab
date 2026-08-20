@@ -296,6 +296,7 @@ export function LoginOverlay({
             onClick={() => {
               setMode(mode === "login" ? "signup" : "login");
               setError(null);
+              setMismatch(false);
               setPicked([]);
               setStep("name");
             }}
@@ -355,6 +356,7 @@ export function LoginOverlay({
             <button
               onClick={() => {
                 setError(null);
+                setMismatch(false);
                 setStep("name");
               }}
               disabled={busy}

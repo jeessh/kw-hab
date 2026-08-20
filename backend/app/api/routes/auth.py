@@ -24,6 +24,7 @@ from app.core.rate_limit import (
 )
 from app.core.security import (
     create_access_token,
+    credential_fingerprint,
     hash_password,
     verify_password,
 )
@@ -34,6 +35,23 @@ from app.models.user import User
 from app.schemas.auth import HostLogin, UserAuth, UserLogin, UserSignup
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _sign_in_member(response: Response, user: User) -> None:
+    """Open a member session, bound to the key it was opened with.
+
+    The token carries a fingerprint of the credential in force right now, and
+    every request re-checks it — so re-issuing a member's icons ends the
+    sessions the old icons opened, rather than leaving them live for the week a
+    token lasts. That matters precisely when the reset was prompted by somebody
+    else knowing the key.
+    """
+    set_auth_cookie(
+        response,
+        create_access_token(
+            user.id, "user", cred_hash=credential_fingerprint(user.password_hash)
+        ),
+    )
 
 
 def _make_username(first: str, last: str) -> str:
@@ -115,7 +133,7 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
         )
     db.refresh(user)
 
-    set_auth_cookie(response, create_access_token(user.id, "user"))
+    _sign_in_member(response, user)
     # Return the icons so the FE can show the member their login credentials.
     # Prefs are intentionally omitted here — the wizard re-reads GET /users/me.
     return {
@@ -147,7 +165,7 @@ def login_user(
     for user in candidates:
         if verify_password(body.password, user.password_hash):
             clear_rate_limit(db, id_key)
-            set_auth_cookie(response, create_access_token(user.id, "user"))
+            _sign_in_member(response, user)
             return {"id": str(user.id), "username": user.username, "role": "user"}
     record(db, id_key, ip_key)
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
@@ -189,7 +207,7 @@ def auth_user(
             password, user.password_hash
         ):
             clear_rate_limit(db, id_key)
-            set_auth_cookie(response, create_access_token(user.id, "user"))
+            _sign_in_member(response, user)
             return {
                 "mode": "login",
                 "id": str(user.id),
@@ -237,7 +255,7 @@ def auth_user(
             "set of icons.",
         )
     db.refresh(user)
-    set_auth_cookie(response, create_access_token(user.id, "user"))
+    _sign_in_member(response, user)
     return {
         "mode": "signup",
         "id": str(user.id),
