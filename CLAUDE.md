@@ -122,6 +122,14 @@ that mail is built from, so a wrong value produces links nobody can open.
   `delete-orphan` cascade. Attendance counts are what nonprofits put in grant
   applications, so they have to outlive the event and the account. Every read
   path filters `deleted_at IS NULL`; add the filter when you add a query.
+- **`lib/accessibility.ts` is the same idea for access needs.** The slugs sit on
+  both `events.accessibility_tags` and `users.accessibility_prefs`, and matching
+  is string equality, so one list drives the host picker and the member picker.
+  Unknown slugs still match and still render (`tagLabel` prettifies them), so a
+  tag added straight to the database is not lost — the vocabulary is expected to
+  grow. `free` and `no_registration` are marked `derived`: they are written from
+  the cost and drop-in answers rather than offered as chips, because asking twice
+  is how the two answers end up disagreeing.
 - **`lib/categories.ts` `CATEGORIES` is the one canonical topic list.** The signup
   interest chips, the member topic stepper, and the host category picker all read
   it. Interest matching compares a member's interests against `event.category`,
