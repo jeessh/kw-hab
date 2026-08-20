@@ -40,11 +40,31 @@ def _make_username(first: str, last: str) -> str:
     return f"{first.strip().lower()}_{last.strip().lower()}".replace(" ", "")
 
 
-def _allocate_unique_icons(db: Session) -> list[str]:
-    """Pick a 3-icon set not already taken. Icons are the unique identifier."""
+def _allocate_unique_icons(
+    db: Session, username: str, *, exclude: list[str] | None = None
+) -> list[str]:
+    """Pick an icon key free for this name.
+
+    Scoped to `username` because that is what the database actually enforces
+    (uq_users_username_icons) and what sign-in actually checks — auth_user
+    resolves the name first, then verifies the credential against the accounts
+    carrying it. Searching globally instead would run the 132 ordered pairs out
+    at 132 members across every agency, and start refusing to open accounts it
+    had no reason to refuse.
+
+    `exclude` keeps a re-issued key from coming back as the one the member
+    already could not use.
+    """
+    excluded = [list(exclude)] if exclude else []
     for _ in range(50):
         icons = random_icon_set()
-        taken = db.query(User).filter(User.icons == icons).first()
+        if icons in excluded:
+            continue
+        taken = (
+            db.query(User)
+            .filter(User.username == username, User.icons == icons)
+            .first()
+        )
         if not taken:
             return icons
     raise HTTPException(
@@ -67,7 +87,7 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     else:
-        icons = _allocate_unique_icons(db)
+        icons = _allocate_unique_icons(db, username)
 
     password = body.custom_password or credential(username, icons)
 

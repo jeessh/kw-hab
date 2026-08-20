@@ -60,6 +60,10 @@ function SignupFlow() {
   // The name is already in use but these icons don't open it. Offer a retry
   // before offering to create a second account under the same name.
   const [conflict, setConflict] = useState(false);
+  // "Try again" and "I'm new" are both wrong for the member who simply cannot
+  // remember. Without a third door that member either taps I'm new — stranding
+  // the account they actually own — or gives up at the last screen.
+  const [forgot, setForgot] = useState(false);
 
   function toggleInterest(label: string) {
     setInterests((prev) =>
@@ -72,6 +76,7 @@ function SignupFlow() {
   function togglePick(slug: string) {
     setError(null);
     setConflict(false);
+    setForgot(false);
     setPicked((prev) => {
       if (prev.includes(slug)) return prev.filter((s) => s !== slug);
       if (prev.length >= PICK_COUNT) return prev; // already at the limit
@@ -85,6 +90,7 @@ function SignupFlow() {
     // Clear here too, so a failed "I'm new" shows only the error rather than
     // stacking it on top of the conflict prompt that triggered it.
     setConflict(false);
+    setForgot(false);
     try {
       // One endpoint: logs in if this name + icon key already exists, else
       // creates the account. `mode` tells us which happened. Interests are only
@@ -420,7 +426,28 @@ function SignupFlow() {
 
             {error && <p className="mt-6 text-pop">{error}</p>}
 
-            {conflict ? (
+            {conflict && forgot ? (
+              <div className="mt-10">
+                <p role="status" className="font-display text-2xl font-bold text-ink">
+                  Someone can give you new icons.
+                </p>
+                {/* Deliberately short. There is no reset a member can do alone
+                    — the icons are the password and the account has no email —
+                    so the honest answer is who to ask, in one line. */}
+                <p className="mx-auto mt-4 max-w-sm text-lg text-muted">
+                  Ask a staff member where you go for programs. They can set you
+                  a new key.
+                </p>
+                <div className="mt-8 flex items-center justify-center">
+                  <button
+                    onClick={() => setForgot(false)}
+                    className="rounded-2xl bg-accent px-10 py-4 text-xl font-semibold text-white shadow-card transition-transform hover:scale-[1.02]"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : conflict ? (
               <div className="mt-10">
                 <p role="status" className="font-display text-2xl font-bold text-ink">
                   Those icons don&apos;t match.
@@ -444,6 +471,13 @@ function SignupFlow() {
                     {busy ? "…" : "I'm new"}
                   </button>
                 </div>
+                <button
+                  disabled={busy}
+                  onClick={() => setForgot(true)}
+                  className="mt-4 rounded-2xl px-6 py-3 text-lg font-semibold text-muted underline underline-offset-4 hover:bg-white disabled:opacity-40"
+                >
+                  I forgot my icons
+                </button>
               </div>
             ) : (
               <div className="mt-10 flex items-center justify-center gap-3">

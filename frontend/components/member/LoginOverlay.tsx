@@ -45,11 +45,15 @@ export function LoginOverlay({
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The name exists but this key does not open it. Distinct from any other
+  // error because it is the only one a member cannot resolve by retrying.
+  const [mismatch, setMismatch] = useState(false);
 
   const nameReady = first.trim() !== "" && last.trim() !== "";
 
   function togglePick(slug: string) {
     setError(null);
+    setMismatch(false);
     setPicked((prev) => {
       if (prev.includes(slug)) return prev.filter((s) => s !== slug);
       if (prev.length >= PICK_COUNT) return prev;
@@ -60,6 +64,7 @@ export function LoginOverlay({
   async function submit() {
     setBusy(true);
     setError(null);
+    setMismatch(false);
     try {
       const res = await api<{ mode: "login" | "signup" | "conflict" }>(
         "/auth/user",
@@ -82,6 +87,7 @@ export function LoginOverlay({
             ? "Those icons don't match this name. Try again."
             : "Someone already signs in with that name. If it's you, try your icons again — if it isn't, use a different pair.",
         );
+        setMismatch(true);
         setPicked([]);
         setBusy(false);
         return;
@@ -318,6 +324,16 @@ export function LoginOverlay({
         {error && (
           <p role="alert" className="mt-4 font-semibold text-pop">
             {error}
+          </p>
+        )}
+
+        {/* Retrying is the right first move, so this sits under the retry
+            prompt rather than replacing it — but a member who has forgotten
+            the key can retry forever without getting in. */}
+        {mismatch && (
+          <p className="mt-2 text-base text-muted">
+            Forgotten them? A staff member where you go for programs can set you
+            a new key.
           </p>
         )}
 

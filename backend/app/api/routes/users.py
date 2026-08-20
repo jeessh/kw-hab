@@ -70,7 +70,7 @@ def create_user(
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     else:
-        icons = _allocate_unique_icons(db)
+        icons = _allocate_unique_icons(db, username)
 
     user = User(
         first_name=body.first_name.strip(),
@@ -90,8 +90,8 @@ def create_user(
             "That name and icon combination is already taken.",
         )
     db.refresh(user)
-    # Icons are the password and can't be read back later — return them once so
-    # they can be handed over.
+    # Returned so they can be written down and handed over now; staff can also
+    # read them off the members table later, or re-issue them (reset_user_key).
     return {
         "id": str(user.id),
         "first_name": user.first_name,
@@ -134,6 +134,53 @@ def update_user(
         user.username = username
         user.password_hash = hash_password(credential(username, user.icons))
 
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Another member already uses that name with the same icons.",
+        )
+    db.refresh(user)
+    return user
+
+
+@router.post("/{user_id}/reset-key", response_model=UserOut)
+def reset_user_key(
+    user_id: uuid.UUID,
+    _: Host = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Issue a new icon key for a member who can no longer get in.
+
+    Recovery here can't look like recovery anywhere else: the icons *are* the
+    password, and there is no email or phone on a member account to send
+    anything to. So a reset is exactly what it sounds like — pick a new key and
+    read it back to whoever asked. That is also how these accounts get created
+    (see UserCreate), so it asks nothing new of staff.
+
+    The old key stops working the moment this returns, which is the point when
+    the reason for the reset is that somebody else learned it.
+    """
+    from app.api.routes.auth import _allocate_unique_icons
+    from app.core.icons import credential
+    from app.core.security import hash_password
+
+    user = db.get(User, user_id)
+    if not user or user.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    # Same guard as the rename path: an account signing in with a password has
+    # no icon key to re-issue, and handing it one would lock out the password.
+    if user.auth_type != "icon":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This account signs in with a password, not icons.",
+        )
+
+    icons = _allocate_unique_icons(db, user.username, exclude=user.icons)
+    user.icons = icons
+    user.password_hash = hash_password(credential(user.username, icons))
     try:
         db.commit()
     except IntegrityError:
