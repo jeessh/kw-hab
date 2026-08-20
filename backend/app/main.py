@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core import mail
 from app.core.config import settings
 
 # Import models so every mapper is configured before the first request.
@@ -22,6 +25,19 @@ app.add_middleware(
 # startup. create_all only ever emitted CREATE TABLE IF NOT EXISTS, so it
 # silently did nothing for column changes — a new field worked locally and then
 # 500'd every query in production against the un-ALTERed table.
+
+
+# The password-reset fallback writes the reset link to the log instead of
+# mailing it, which is right locally and a credential leak in production.
+# COOKIE_SECURE is the closest thing to a "this is production" signal the
+# settings have — it is what has to be true behind HTTPS — so warn on the
+# combination rather than letting it pass unremarked.
+if settings.COOKIE_SECURE and not mail.configured():
+    logging.getLogger(__name__).warning(
+        "COOKIE_SECURE is on but SMTP is not configured: organizer password "
+        "reset will LOG reset links instead of sending them. Set SMTP_HOST and "
+        "MAIL_FROM, or expect reset links in your logs."
+    )
 
 
 @app.get("/health")

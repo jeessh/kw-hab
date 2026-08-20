@@ -3,7 +3,15 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,6 +42,7 @@ from app.core.security import (
 from app.core.config import settings
 from app.core.security import decode_token
 from app.core.mail import send as send_mail
+from app.db.session import SessionLocal
 from app.models.host import Host
 from app.models.password_reset import HostPasswordReset
 from app.models.user import User
@@ -326,6 +335,10 @@ RESET_TTL_MINUTES = 60
 # Per address, per window. Low: this sends mail to somebody who did not
 # necessarily ask for it, and five is already more than a real person needs.
 FORGOT_LIMIT = 5
+# Per address, across all addresses. Deliberately NOT the shared IP_LIMIT of
+# 200 — that number is sized to tolerate a room full of members mistapping
+# icons, and reused here it would authorise 200 emails per address per window.
+FORGOT_IP_LIMIT = 20
 
 
 def _reset_hash(token: str) -> str:
@@ -338,6 +351,7 @@ def _reset_hash(token: str) -> str:
 def forgot_host_password(
     body: HostForgot,
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Send a reset link, if that address has an account.
@@ -345,11 +359,16 @@ def forgot_host_password(
     Answers identically whether or not it does, and whether or not the mail
     actually went out. Anything else turns this into a way to ask the platform
     which agencies are on it.
+
+    The mail goes out *after* the response, on a background task. Sending it
+    inline made the reply slow by however long an SMTP round trip takes, but
+    only for addresses that have an account — so the response time answered the
+    question the identical bodies exist to refuse.
     """
     email = body.email.strip().lower()
     ip_key = f"{client_key(request)}:forgot"
     id_key = f"forgot:{email}"
-    enforce_rate_limit(db, {id_key: FORGOT_LIMIT, ip_key: IP_LIMIT})
+    enforce_rate_limit(db, {id_key: FORGOT_LIMIT, ip_key: FORGOT_IP_LIMIT})
     # Every attempt counts, not just failures: the cost being metered here is
     # mail sent to somebody's inbox, and a request that finds a real account is
     # exactly the one worth limiting.
@@ -361,21 +380,40 @@ def forgot_host_password(
         .first()
     )
     if host:
-        token = secrets.token_urlsafe(32)
+        # Both the row and the mail are issued after the response. Backgrounding
+        # only the mail left the INSERT as the tell — measured against the
+        # pooler it was worth most of a second, which is plenty to read an
+        # answer out of.
+        background.add_task(
+            _issue_reset, host.id, host.email, host.name, secrets.token_urlsafe(32)
+        )
+    return {"sent": True}
+
+
+def _issue_reset(host_id: uuid.UUID, email: str, name: str, token: str) -> None:
+    """Record the reset and mail the link. Runs after the response has gone.
+
+    Opens its own session: the request's is closed by the time this runs.
+    """
+    db = SessionLocal()
+    try:
         db.add(
             HostPasswordReset(
                 token_hash=_reset_hash(token),
-                host_id=host.id,
+                host_id=host_id,
                 expires_at=datetime.now(timezone.utc)
                 + timedelta(minutes=RESET_TTL_MINUTES),
             )
         )
         db.commit()
-        link = f"{settings.FRONTEND_ORIGIN}/host/reset/{token}"
-        send_mail(
-            host.email,
-            "Reset your Belonging Collective password",
-            f"""Hello {host.name},
+    finally:
+        db.close()
+
+    link = f"{settings.FRONTEND_ORIGIN}/host/reset/{token}"
+    send_mail(
+        email,
+        "Reset your Belonging Collective password",
+        f"""Hello {name},
 
 Someone asked to reset the password for this organizer account.
 
@@ -386,8 +424,7 @@ Open this link to choose a new one. It works once, and expires in one hour:
 If it wasn't you, nothing has changed — ignore this and your password stays
 as it is.
 """,
-        )
-    return {"sent": True}
+    )
 
 
 def _usable_reset(db: Session, token: str) -> HostPasswordReset:

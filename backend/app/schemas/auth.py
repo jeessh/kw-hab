@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 class UserSignup(BaseModel):
@@ -47,7 +47,11 @@ class HostLogin(BaseModel):
 
 
 class HostForgot(BaseModel):
-    email: EmailStr
+    # Plain str, matching HostLogin and for the same reason: accounts predating
+    # EmailStr on signup would be rejected here before the lookup ever ran. An
+    # organizer who can't sign in because of a legacy address is precisely who
+    # this endpoint exists for, so refusing to look them up defeats it.
+    email: str
 
 
 class HostReset(BaseModel):
