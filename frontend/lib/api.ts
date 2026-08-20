@@ -238,7 +238,7 @@ export const deleteAdmin = (id: string) =>
 
 export const listMembers = () => api<MemberAccount[]>("/users");
 
-/** Icons come back once — they're the password and can't be read again. */
+/** Icons come back so they can be written down and handed over. */
 export const createMember = (body: { first_name: string; last_name: string }) =>
   api<{ id: string; first_name: string; last_name: string; icons: string[] }>(
     "/users",
@@ -253,6 +253,16 @@ export const updateMember = (
     method: "PATCH",
     body: JSON.stringify(body),
   });
+
+/**
+ * Issue a member a new icon key. The old one stops working immediately.
+ *
+ * This is the whole of member account recovery: the icons are the password and
+ * a member account has no email or phone to send anything to, so the only way
+ * back in is for staff to re-issue the key and hand it over.
+ */
+export const resetMemberKey = (id: string) =>
+  api<MemberAccount>(`/users/${id}/reset-key`, { method: "POST" });
 
 export const deleteMember = (id: string) =>
   api(`/users/${id}`, { method: "DELETE" });

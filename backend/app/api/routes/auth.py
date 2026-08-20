@@ -24,6 +24,7 @@ from app.core.rate_limit import (
 )
 from app.core.security import (
     create_access_token,
+    credential_fingerprint,
     hash_password,
     verify_password,
 )
@@ -36,15 +37,52 @@ from app.schemas.auth import HostLogin, UserAuth, UserLogin, UserSignup
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _sign_in_member(response: Response, user: User) -> None:
+    """Open a member session, bound to the key it was opened with.
+
+    The token carries a fingerprint of the credential in force right now, and
+    every request re-checks it — so re-issuing a member's icons ends the
+    sessions the old icons opened, rather than leaving them live for the week a
+    token lasts. That matters precisely when the reset was prompted by somebody
+    else knowing the key.
+    """
+    set_auth_cookie(
+        response,
+        create_access_token(
+            user.id, "user", cred_hash=credential_fingerprint(user.password_hash)
+        ),
+    )
+
+
 def _make_username(first: str, last: str) -> str:
     return f"{first.strip().lower()}_{last.strip().lower()}".replace(" ", "")
 
 
-def _allocate_unique_icons(db: Session) -> list[str]:
-    """Pick a 3-icon set not already taken. Icons are the unique identifier."""
+def _allocate_unique_icons(
+    db: Session, username: str, *, exclude: list[str] | None = None
+) -> list[str]:
+    """Pick an icon key free for this name.
+
+    Scoped to `username` because that is what the database actually enforces
+    (uq_users_username_icons) and what sign-in actually checks — auth_user
+    resolves the name first, then verifies the credential against the accounts
+    carrying it. Searching globally instead would run the 132 ordered pairs out
+    at 132 members across every agency, and start refusing to open accounts it
+    had no reason to refuse.
+
+    `exclude` keeps a re-issued key from coming back as the one the member
+    already could not use.
+    """
+    excluded = [list(exclude)] if exclude else []
     for _ in range(50):
         icons = random_icon_set()
-        taken = db.query(User).filter(User.icons == icons).first()
+        if icons in excluded:
+            continue
+        taken = (
+            db.query(User)
+            .filter(User.username == username, User.icons == icons)
+            .first()
+        )
         if not taken:
             return icons
     raise HTTPException(
@@ -67,7 +105,7 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     else:
-        icons = _allocate_unique_icons(db)
+        icons = _allocate_unique_icons(db, username)
 
     password = body.custom_password or credential(username, icons)
 
@@ -95,7 +133,7 @@ def signup_user(body: UserSignup, response: Response, db: Session = Depends(get_
         )
     db.refresh(user)
 
-    set_auth_cookie(response, create_access_token(user.id, "user"))
+    _sign_in_member(response, user)
     # Return the icons so the FE can show the member their login credentials.
     # Prefs are intentionally omitted here — the wizard re-reads GET /users/me.
     return {
@@ -127,7 +165,7 @@ def login_user(
     for user in candidates:
         if verify_password(body.password, user.password_hash):
             clear_rate_limit(db, id_key)
-            set_auth_cookie(response, create_access_token(user.id, "user"))
+            _sign_in_member(response, user)
             return {"id": str(user.id), "username": user.username, "role": "user"}
     record(db, id_key, ip_key)
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
@@ -169,7 +207,7 @@ def auth_user(
             password, user.password_hash
         ):
             clear_rate_limit(db, id_key)
-            set_auth_cookie(response, create_access_token(user.id, "user"))
+            _sign_in_member(response, user)
             return {
                 "mode": "login",
                 "id": str(user.id),
@@ -217,7 +255,7 @@ def auth_user(
             "set of icons.",
         )
     db.refresh(user)
-    set_auth_cookie(response, create_access_token(user.id, "user"))
+    _sign_in_member(response, user)
     return {
         "mode": "signup",
         "id": str(user.id),
@@ -281,6 +319,11 @@ def me(request: Request, db: Session = Depends(get_db)):
         # then 401s.
         user = db.get(User, uuid.UUID(payload["sub"]))
         if not user or user.deleted_at is not None:
+            return {"authenticated": False}
+        # And the same again for a re-issued key: this is the gate the UI reads,
+        # so it has to agree with deps._key_still_current or the member is shown
+        # a signed-in app in which nothing works.
+        if payload.get("cv") != credential_fingerprint(user.password_hash):
             return {"authenticated": False}
     if role == "host":
         # Tokens last a week and carry whatever is_admin was true at login, so a

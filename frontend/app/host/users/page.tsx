@@ -10,6 +10,7 @@ import {
   createMember,
   deleteMember,
   listMembers,
+  resetMemberKey,
   updateMember,
   type MemberAccount,
 } from "@/lib/api";
@@ -111,6 +112,7 @@ function MembersTab() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<MemberAccount | null>(null);
   const [removing, setRemoving] = useState<MemberAccount | null>(null);
+  const [resetting, setResetting] = useState<MemberAccount | null>(null);
   const [newKey, setNewKey] = useState<{ name: string; icons: string[] } | null>(
     null,
   );
@@ -155,6 +157,25 @@ function MembersTab() {
       await load();
     } catch (e) {
       setError(apiMessage(e, "Couldn't remove that account."));
+    }
+  }
+
+  async function resetKey() {
+    const m = resetting;
+    if (!m) return;
+    setResetting(null);
+    setError(null);
+    try {
+      const updated = await resetMemberKey(m.id);
+      // Straight into the same "write this down" modal the add flow ends on —
+      // a new key is a new key, however it came about.
+      setNewKey({
+        name: `${updated.first_name} ${updated.last_name}`,
+        icons: updated.icons,
+      });
+      await load();
+    } catch (e) {
+      setError(apiMessage(e, "Couldn't reset that key."));
     }
   }
 
@@ -249,6 +270,10 @@ function MembersTab() {
                       <Button onClick={() => setEditing(m)}>
                         Edit<span className="sr-only"> {m.first_name}</span>
                       </Button>
+                      <Button onClick={() => setResetting(m)}>
+                        Reset key
+                        <span className="sr-only"> for {m.first_name}</span>
+                      </Button>
                       <Button tone="danger" onClick={() => setRemoving(m)}>
                         Remove<span className="sr-only"> {m.first_name}</span>
                       </Button>
@@ -275,16 +300,17 @@ function MembersTab() {
       {newKey && (
         <Modal title="Write this down" onClose={() => setNewKey(null)}>
           <p className="mt-2 text-lg text-ink">
-            {newKey.name} signs in with their name and these three icons, in
-            this order.
+            {newKey.name} signs in with their name and{" "}
+            {newKey.icons.length === 1 ? "this icon" : "these icons"}
+            {newKey.icons.length > 1 ? ", in this order" : ""}.
           </p>
           <p className="mt-4 text-center text-5xl" aria-hidden>
             {newKey.icons.map((i) => emojiFor(i)).join(" ")}
           </p>
           <p className="sr-only">{newKey.icons.join(", ")}</p>
           <p className="mt-4 text-base text-muted">
-            There is no way to look these up again — if they&apos;re lost the
-            account has to be replaced.
+            Written down is best, but nothing is lost if it isn&apos;t — the key
+            is listed in the table, and Reset key issues a new one.
           </p>
           <div className="mt-5 flex justify-end">
             <button
@@ -308,6 +334,27 @@ function MembersTab() {
             void load();
           }}
         />
+      )}
+
+      {resetting && (
+        <Modal
+          title={`Reset ${resetting.first_name}'s key?`}
+          onClose={() => setResetting(null)}
+        >
+          <p className="mt-2 text-lg text-ink">
+            They get new icons to sign in with. The ones they have now stop
+            working, so only do this if they can be told.
+          </p>
+          <p className="mt-3 text-base text-muted">
+            Nothing else changes — their saved programs and topics stay.
+          </p>
+          <div className="mt-5 flex justify-end gap-3">
+            <Button onClick={() => setResetting(null)}>Cancel</Button>
+            <Button tone="primary" onClick={() => void resetKey()}>
+              Reset key
+            </Button>
+          </div>
+        </Modal>
       )}
 
       {removing && (
@@ -449,10 +496,11 @@ function EditMemberModal({
           />
         </Field>
       </div>
-      {/* The icon key isn't editable: it IS the password, and changing it here
-          would lock the member out with nothing to tell them. */}
+      {/* Not editable by hand: the icons are the password, and a set typed in
+          here could collide with another account under the same name. Reset
+          key allocates a free one instead. */}
       <p className="mt-3 text-sm text-slate-600">
-        The sign-in icons can&apos;t be changed — they&apos;re the password.
+        To change the sign-in icons, use Reset key on the members table.
       </p>
       {error && (
         <p role="alert" className="mt-3 text-sm font-medium text-red-600">
