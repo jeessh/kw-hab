@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="The Belonging Collective">
+  <title>The Belonging Collective</title>
+  <rect width="64" height="64" rx="14" fill="#5B5BD6" />
+  <!-- Three figures side by side: the collective, at favicon scale. Kept to
+       three flat shapes because anything finer is mud at 16px. -->
+  <circle cx="20" cy="24" r="6.5" fill="#35CDEE" />
+  <circle cx="32" cy="20" r="7.5" fill="#FFFFFF" />
+  <circle cx="44" cy="24" r="6.5" fill="#35CDEE" />
+  <path d="M9 46c0-6.1 4.9-11 11-11s11 4.9 11 11z" fill="#35CDEE" />
+  <path d="M20.5 44c0-6.4 5.1-11.5 11.5-11.5S43.5 37.6 43.5 44z" fill="#FFFFFF" />
+  <path d="M33 46c0-6.1 4.9-11 11-11s11 4.9 11 11z" fill="#35CDEE" />
+</svg>

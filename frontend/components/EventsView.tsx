@@ -962,6 +962,10 @@ export function EventsView({
         onToggleInterest={toggleInterest}
         signedIn={signedIn}
         onSignIn={() => {
+          // Close this panel on the way out. The sign-in overlay covers it, so
+          // leaving it open left a hidden dialog still listening for Escape —
+          // which then stole focus to a trigger nobody could see.
+          setA11yOpen(false);
           setAuthFor(null);
           setAuthOpen(true);
         }}
@@ -973,6 +977,9 @@ export function EventsView({
         reveal={settingsReveal}
         onClose={closeSettings}
         onSignIn={() => {
+          // Same reason as the accessibility panel above: otherwise Escape
+          // closes this panel behind the overlay instead of the overlay.
+          closeSettings();
           setAuthFor(null);
           setAuthOpen(true);
         }}
@@ -1275,6 +1282,27 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
   signedIn: boolean;
   onSignIn: () => void;
 }) {
+  // Escape closes it, and focus goes back to the trigger — otherwise keyboard
+  // focus is stranded on a panel that is no longer there. A backdrop click was
+  // the only way out, which is no way out at all without a mouse.
+  //
+  // Listening here rather than in the feed's keydown handler because that one
+  // returns early for anything inside a [role="dialog"] and again while this
+  // menu is open. Both are right for arrow keys — the panel owns them — and
+  // wrong for Escape, which is how you leave. Capture, and without stopping
+  // propagation, matching the menus in MemberChrome.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      onOpenChange(false);
+      triggerRef.current?.focus();
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, onOpenChange]);
+
   return (
     // Sits under the view toggle, top left, as in the design.
     <div className="absolute left-4 top-[4.75rem] z-50">
@@ -1287,6 +1315,7 @@ const AccessibilityMenu = memo(function AccessibilityMenu({
         />
       )}
       <button
+        ref={triggerRef}
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         aria-haspopup="dialog"

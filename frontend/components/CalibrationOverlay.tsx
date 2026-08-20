@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { HeadProxy } from "@/lib/headPose";
 
 // Four corners and the centre, as viewport fractions.
@@ -60,6 +60,7 @@ export function CalibrationOverlay({
   readProxy: () => HeadProxy | null;
   setPreview: (show: boolean) => void;
 }) {
+  const reduceMotion = useReducedMotion();
   const [phase, setPhase] = useState<"aim" | "dots">("aim");
   const [current, setCurrent] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0);
@@ -259,11 +260,23 @@ export function CalibrationOverlay({
                 style={{ background: color, opacity: state === "todo" ? 0.3 : 1 }}
               >
                 {state === "active" && (
+                  // The one animation here that never stops and travels
+                  // furthest — 2.6x, forever. Under prefers-reduced-motion it
+                  // holds a steady glow instead: the dot still reads as the
+                  // active one, which is all the pulse was for.
                   <motion.span
                     className="absolute inset-0 rounded-full"
                     style={{ background: "#FACC15", transformOrigin: "center" }}
-                    animate={{ scale: [1, 2.6, 1], opacity: [0.55, 0, 0.55] }}
-                    transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
+                    animate={
+                      reduceMotion
+                        ? { scale: 1, opacity: 0.55 }
+                        : { scale: [1, 2.6, 1], opacity: [0.55, 0, 0.55] }
+                    }
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { duration: 1.3, repeat: Infinity, ease: "easeOut" }
+                    }
                   />
                 )}
                 {/* hold-still progress ring */}

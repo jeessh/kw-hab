@@ -34,7 +34,8 @@ export default function ProgramsPage() {
 type Toast = {
   message: string;
   tone: "posted" | "deleted";
-  undo: () => Promise<void>;
+  /** Absent when there is nothing to undo — a copied link, a saved edit. */
+  undo?: () => Promise<void>;
 };
 
 function PostedEventsPage({ session }: { session: Session }) {
@@ -168,7 +169,6 @@ function PostedEventsPage({ session }: { session: Session }) {
         setToast({
           message: "Link copied. Paste it wherever you're sharing.",
           tone: "posted",
-          undo: async () => {},
         }),
       )
       .catch(() => window.prompt("Copy this link:", url));
@@ -253,8 +253,15 @@ function PostedEventsPage({ session }: { session: Session }) {
         <EditEventModal
           event={editing}
           onClose={() => setEditing(null)}
-          onSaved={() => {
+          onSaved={(title: string) => {
             setEditing(null);
+            // Editing was the one action here that confirmed nothing. Staff
+            // pressed Save and the table simply redrew, which reads the same
+            // as a save that silently failed.
+            setToast({
+              message: `'${title}' was successfully updated.`,
+              tone: "posted",
+            });
             void load();
           }}
         />
@@ -271,13 +278,16 @@ function PostedEventsPage({ session }: { session: Session }) {
         <UndoToast
           message={toast.message}
           tone={toast.tone}
-          onUndo={() => {
-            const t = toast;
-            setToast(null);
-            void t.undo().catch(() =>
-              setError("Couldn't undo that. Please refresh."),
-            );
-          }}
+          onUndo={
+            toast.undo &&
+            (() => {
+              const undo = toast.undo;
+              setToast(null);
+              void undo?.().catch(() =>
+                setError("Couldn't undo that. Please refresh."),
+              );
+            })
+          }
           onDismiss={() => setToast(null)}
         />
       )}
